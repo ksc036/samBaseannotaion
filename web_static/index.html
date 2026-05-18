@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>micro-sam point segmentation</title>
+    <link rel="stylesheet" href="/static/styles.css" />
+  </head>
+  <body>
+    <header>
+      <div>
+        <h1>micro-sam point segmentation</h1>
+        <p>Positive/negative point prompts to mask</p>
+      </div>
+      <label class="fileButton">
+        Open image
+        <input id="fileInput" type="file" accept=".png,.jpg,.jpeg,.tif,.tiff" />
+      </label>
+    </header>
+
+    <main>
+      <aside>
+        <div class="controlGroup">
+          <button id="positiveBtn" class="active positive">Positive</button>
+          <button id="negativeBtn" class="negative">Negative</button>
+        </div>
+        <button id="segmentBtn">Segment Object</button>
+        <button id="clearBtn">Clear Points</button>
+        <div class="controlGroup">
+          <a id="maskDownload" class="disabled" download="mask_255.png">Mask 255</a>
+          <a id="edgeDownload" class="disabled" download="edge_1px.png">Edge 1px</a>
+        </div>
+        <div id="status">Open a microscopy image to start.</div>
+        <ul id="pointList"></ul>
+      </aside>
+
+      <section id="stageWrap">
+        <canvas id="stage"></canvas>
+      </section>
+    </main>
+
+    <script src="/static/app.js"></script>
+  </body>
+</html>

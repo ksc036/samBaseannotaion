@@ -1,0 +1,21 @@
+# Python
+__pycache__/
+*.py[cod]
+
+# Local runtime outputs
+data/
+embeddings/
+web_uploads/
+web_outputs/
+last_upload.json
+
+# Installer/log files created during local setup
+*.exe
+*.out
+*.err
+
+# OS/editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/

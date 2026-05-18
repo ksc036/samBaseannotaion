@@ -1,0 +1,5 @@
+name: micro-sam
+channels:
+  - conda-forge
+dependencies:
+  - micro_sam
