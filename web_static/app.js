@@ -360,7 +360,7 @@ function drawTransientStroke() {
 }
 
 async function loadBitmap(url) {
-  const blob = await fetch(url, { cache: "no-store" }).then((response) => response.blob());
+  const blob = await fetch(url).then((response) => response.blob());
   return createImageBitmap(blob);
 }
 
@@ -390,7 +390,7 @@ fileInput.addEventListener("change", async () => {
   currentStrokePoints = [];
   pendingStrokeSnapshot = null;
   actionHistory = [];
-  imageBitmap = await loadBitmap(data.image_url);
+  imageBitmap = await loadBitmap(data.image_data_url);
   fitCanvas();
   draw();
   renderResults();
@@ -429,8 +429,7 @@ segmentBtn.addEventListener("click", async () => {
     setStatus(data.error || "Segmentation failed.");
     return;
   }
-  await setMaskFromUrl(data.mask_url, data.overlay_url);
-  maskDownload.href = data.mask_url;
+  await setMaskFromUrl(data.mask_data_url, data.overlay_data_url);
   maskDownload.classList.remove("disabled");
   measurements = [];
   renderResults();
@@ -463,7 +462,7 @@ calculateBtn.addEventListener("click", async () => {
   }
 
   measurements = data.segments;
-  overlayBitmap = await loadBitmap(data.overlay_url);
+  overlayBitmap = await loadBitmap(data.overlay_data_url);
   maskDirty = false;
   currentStrokePoints = [];
   renderResults(measurements);

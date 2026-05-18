@@ -4,9 +4,11 @@ import base64
 import json
 import mimetypes
 import uuid
+from datetime import datetime
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from io import BytesIO
 from pathlib import Path
+import re
 from urllib.parse import urlparse
 
 import imageio.v3 as iio
@@ -40,6 +42,12 @@ STATE = {
     "active_image_id": None,
     "images": {},
 }
+
+
+def sanitize_name(value: str) -> str:
+    cleaned = re.sub(r"[^A-Za-z0-9._-]+", "_", value.strip())
+    cleaned = cleaned.strip("._-")
+    return cleaned or "image"
 
 
 def mask_to_uint8(mask: np.ndarray) -> np.ndarray:
@@ -188,21 +196,27 @@ def decode_mask_data_url(mask_data_url: str) -> np.ndarray:
     return image > 0
 
 
-def persist_mask_outputs(image_id: str, mask: np.ndarray, color: tuple[int, int, int] = (226, 90, 40)) -> dict:
+def image_to_png_data_url(image: np.ndarray) -> str:
+    buffer = BytesIO()
+    if image.ndim == 2:
+        data = image.astype(np.float32)
+        data = data - data.min()
+        if data.max() > 0:
+            data = data / data.max()
+        data = (data * 255).astype(np.uint8)
+    else:
+        data = image
+    iio.imwrite(buffer, data, extension=".png")
+    encoded = base64.b64encode(buffer.getvalue()).decode("ascii")
+    return f"data:image/png;base64,{encoded}"
+
+
+def build_mask_outputs(mask: np.ndarray, color: tuple[int, int, int] = (226, 90, 40)) -> dict:
     mask_255 = mask_to_uint8(mask)
-    edge_255 = outline_mask(mask_255)
     overlay = mask_overlay_rgba(mask_255, color=color)
-    result_id = uuid.uuid4().hex
-    mask_path = OUTPUT_DIR / f"{image_id}_{result_id}_mask_255.png"
-    edge_path = OUTPUT_DIR / f"{image_id}_{result_id}_edge_1px.png"
-    overlay_path = OUTPUT_DIR / f"{image_id}_{result_id}_overlay.png"
-    iio.imwrite(mask_path, mask_255)
-    iio.imwrite(edge_path, edge_255)
-    iio.imwrite(overlay_path, overlay)
     return {
-        "mask_url": f"/outputs/{mask_path.name}",
-        "edge_url": f"/outputs/{edge_path.name}",
-        "overlay_url": f"/outputs/{overlay_path.name}",
+        "mask_data_url": image_to_png_data_url(mask_255),
+        "overlay_data_url": image_to_png_data_url(overlay),
     }
 
 
@@ -228,20 +242,6 @@ def ensure_rgb(image: np.ndarray) -> np.ndarray:
 def read_image(path: Path) -> np.ndarray:
     image = iio.imread(path)
     return ensure_rgb(image)
-
-
-def save_view_image(image: np.ndarray, image_id: str) -> Path:
-    out = OUTPUT_DIR / f"{image_id}_image.png"
-    if image.ndim == 2:
-        data = image.astype(np.float32)
-        data = data - data.min()
-        if data.max() > 0:
-            data = data / data.max()
-        data = (data * 255).astype(np.uint8)
-    else:
-        data = image
-    iio.imwrite(out, data)
-    return out
 
 
 def get_predictor():
@@ -323,14 +323,34 @@ class SamWebHandler(BaseHTTPRequestHandler):
     def handle_upload(self):
         length = int(self.headers.get("Content-Length", "0"))
         filename = self.headers.get("X-Filename", "image.tif")
-        suffix = Path(filename).suffix or ".tif"
+        original_name = Path(filename)
+        suffix = original_name.suffix or ".tif"
+        stem = sanitize_name(original_name.stem)
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        folder_name = f"{timestamp}_{stem}"
         image_id = uuid.uuid4().hex
-        raw_path = UPLOAD_DIR / f"{image_id}{suffix}"
-        raw_path.write_bytes(self.rfile.read(length))
+        sample_dir = UPLOAD_DIR / folder_name
+        image_dir = sample_dir / "Image"
+        mask_dir = sample_dir / "mask"
+        image_dir.mkdir(parents=True, exist_ok=True)
+        mask_dir.mkdir(parents=True, exist_ok=True)
+        image_save_path = image_dir / f"{folder_name}{suffix}"
+        mask_save_path = mask_dir / f"{folder_name}.png"
+        image_save_path.write_bytes(self.rfile.read(length))
 
-        image = read_image(raw_path)
-        view_path = save_view_image(image, image_id)
-        STATE["images"][image_id] = {"path": raw_path, "array": image, "view": view_path, "segments": [], "last_mask": None}
+        image = read_image(image_save_path)
+        view_data_url = image_to_png_data_url(image)
+        STATE["images"][image_id] = {
+            "path": image_save_path,
+            "array": image,
+            "view": view_data_url,
+            "segments": [],
+            "last_mask": None,
+            "sample_dir": sample_dir,
+            "image_save_path": image_save_path,
+            "mask_save_path": mask_save_path,
+            "folder_name": folder_name,
+        }
         set_active_image(image_id)
 
         height, width = image.shape[:2]
@@ -341,7 +361,7 @@ class SamWebHandler(BaseHTTPRequestHandler):
                 "image_id": image_id,
                 "width": int(width),
                 "height": int(height),
-                "image_url": f"/outputs/{view_path.name}",
+                "image_data_url": view_data_url,
             },
         )
 
@@ -364,7 +384,7 @@ class SamWebHandler(BaseHTTPRequestHandler):
         image_state = STATE["images"][image_id]
         image_state["segments"] = []
         image_state["last_mask"] = mask.astype(bool)
-        outputs = persist_mask_outputs(image_id, image_state["last_mask"])
+        outputs = build_mask_outputs(image_state["last_mask"])
 
         json_response(
             self,
@@ -392,6 +412,8 @@ class SamWebHandler(BaseHTTPRequestHandler):
         if last_mask is None:
             raise ValueError("No segmentation results available. Segment at least one object first.")
 
+        iio.imwrite(image_state["mask_save_path"], mask_to_uint8(last_mask))
+
         segments = []
         components = split_connected_components(last_mask)
         colors = []
@@ -409,15 +431,13 @@ class SamWebHandler(BaseHTTPRequestHandler):
             )
         image_state["segments"] = segments
         overlay = colorize_components_overlay(components, colors)
-        overlay_path = OUTPUT_DIR / f"{image_id}_{uuid.uuid4().hex}_calculate_overlay.png"
-        iio.imwrite(overlay_path, overlay)
 
         json_response(
             self,
             200,
             {
                 "segments": segments,
-                "overlay_url": f"/outputs/{overlay_path.name}",
+                "overlay_data_url": image_to_png_data_url(overlay),
             },
         )
 
