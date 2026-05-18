@@ -14,7 +14,6 @@ const brushSize = document.getElementById("brushSize");
 const brushSizeValue = document.getElementById("brushSizeValue");
 const maskDownload = document.getElementById("maskDownload");
 const edgeDownload = document.getElementById("edgeDownload");
-const metricSelect = document.getElementById("metricSelect");
 const resultsBody = document.getElementById("resultsBody");
 const resultsPanel = document.getElementById("resultsPanel");
 
@@ -95,7 +94,7 @@ function renderResults(rows = []) {
   if (rows.length === 0) {
     const row = document.createElement("tr");
     const cell = document.createElement("td");
-    cell.colSpan = 7;
+    cell.colSpan = 8;
     cell.className = "emptyCell";
     cell.textContent = "No calculation yet.";
     row.append(cell);
@@ -103,7 +102,6 @@ function renderResults(rows = []) {
     return;
   }
 
-  const selectedMetric = metricSelect.value;
   rows.forEach((segment, index) => {
     const row = document.createElement("tr");
     const colorCell = document.createElement("td");
@@ -114,9 +112,6 @@ function renderResults(rows = []) {
 
     const segmentCell = document.createElement("td");
     segmentCell.textContent = `#${index + 1}`;
-
-    const selectedCell = document.createElement("td");
-    selectedCell.textContent = formatNumber(segment[selectedMetric]);
 
     const areaCell = document.createElement("td");
     areaCell.textContent = `${segment.area_pixels}`;
@@ -130,7 +125,13 @@ function renderResults(rows = []) {
     const eqCell = document.createElement("td");
     eqCell.textContent = formatNumber(segment.equivalent_diameter_pixels);
 
-    row.append(colorCell, segmentCell, selectedCell, areaCell, feretMaxCell, feretMinCell, eqCell);
+    const bboxWidthCell = document.createElement("td");
+    bboxWidthCell.textContent = formatNumber(segment.bbox_width_pixels);
+
+    const bboxHeightCell = document.createElement("td");
+    bboxHeightCell.textContent = formatNumber(segment.bbox_height_pixels);
+
+    row.append(colorCell, segmentCell, areaCell, feretMaxCell, feretMinCell, eqCell, bboxWidthCell, bboxHeightCell);
     resultsBody.append(row);
   });
 }
@@ -139,7 +140,7 @@ function renderLoadingResults() {
   resultsBody.innerHTML = "";
   const row = document.createElement("tr");
   const cell = document.createElement("td");
-  cell.colSpan = 7;
+  cell.colSpan = 8;
   cell.className = "emptyCell";
   cell.textContent = "Calculating...";
   row.append(cell);
@@ -252,6 +253,8 @@ async function syncMaskToServer() {
     }
     overlayBitmap = await loadBitmap(data.overlay_url);
     maskDirty = false;
+    measurements = [];
+    renderResults();
   } finally {
     isSyncingMask = false;
   }
@@ -414,13 +417,12 @@ calculateBtn.addEventListener("click", async () => {
   }
 
   measurements = data.segments;
+  overlayBitmap = await loadBitmap(data.overlay_url);
   renderResults(measurements);
   draw();
   resultsPanel.scrollIntoView({ behavior: "smooth", block: "start" });
   setStatus(`Calculated ${measurements.length} segment measurements in pixels.`);
 });
-
-metricSelect.addEventListener("change", () => renderResults(measurements));
 
 stage.addEventListener("pointerdown", (event) => {
   if (!imageBitmap) return;

@@ -56,6 +56,20 @@ def mask_overlay_rgba(mask: np.ndarray, color: tuple[int, int, int] = (226, 90, 
     return overlay
 
 
+def colorize_components_overlay(components: list[np.ndarray], colors: list[tuple[int, int, int]], alpha: int = 115) -> np.ndarray:
+    if not components:
+        return np.zeros((1, 1, 4), dtype=np.uint8)
+    shape = components[0].shape
+    overlay = np.zeros((*shape, 4), dtype=np.uint8)
+    for component, color in zip(components, colors):
+        binary = component > 0
+        overlay[..., 0][binary] = color[0]
+        overlay[..., 1][binary] = color[1]
+        overlay[..., 2][binary] = color[2]
+        overlay[..., 3][binary] = alpha
+    return overlay
+
+
 def outline_mask(mask: np.ndarray, thickness: int = 1) -> np.ndarray:
     binary = mask > 0
     size = 1 + (2 * max(1, int(thickness)))
@@ -394,8 +408,10 @@ class SamWebHandler(BaseHTTPRequestHandler):
 
         segments = []
         components = split_connected_components(last_mask)
+        colors = []
         for index, component in enumerate(components):
             color = SEGMENT_COLORS[index % len(SEGMENT_COLORS)]
+            colors.append(color)
             metrics = calculate_mask_metrics(component)
             segments.append(
                 {
@@ -406,12 +422,16 @@ class SamWebHandler(BaseHTTPRequestHandler):
                 }
             )
         image_state["segments"] = segments
+        overlay = colorize_components_overlay(components, colors)
+        overlay_path = OUTPUT_DIR / f"{image_id}_{uuid.uuid4().hex}_calculate_overlay.png"
+        iio.imwrite(overlay_path, overlay)
 
         json_response(
             self,
             200,
             {
-                "segments": segments
+                "segments": segments,
+                "overlay_url": f"/outputs/{overlay_path.name}",
             },
         )
 
