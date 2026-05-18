@@ -297,8 +297,6 @@ class SamWebHandler(BaseHTTPRequestHandler):
                 self.handle_upload()
             elif parsed.path == "/api/segment":
                 self.handle_segment()
-            elif parsed.path == "/api/mask/update":
-                self.handle_mask_update()
             elif parsed.path == "/api/calculate":
                 self.handle_calculate()
             else:
@@ -377,24 +375,6 @@ class SamWebHandler(BaseHTTPRequestHandler):
             },
         )
 
-    def handle_mask_update(self):
-        payload = self.read_json()
-        image_id = payload["image_id"]
-        if image_id not in STATE["images"]:
-            raise ValueError("Unknown image_id.")
-
-        mask_data_url = payload.get("mask_data_url")
-        if not mask_data_url:
-            raise ValueError("mask_data_url is required.")
-
-        image_state = STATE["images"][image_id]
-        updated_mask = decode_mask_data_url(mask_data_url)
-        image_state["last_mask"] = updated_mask.astype(bool)
-        image_state["segments"] = []
-        outputs = persist_mask_outputs(image_id, image_state["last_mask"])
-
-        json_response(self, 200, outputs)
-
     def handle_calculate(self):
         payload = self.read_json()
         image_id = payload["image_id"]
@@ -402,7 +382,13 @@ class SamWebHandler(BaseHTTPRequestHandler):
             raise ValueError("Unknown image_id.")
 
         image_state = STATE["images"][image_id]
-        last_mask = image_state.get("last_mask")
+        mask_data_url = payload.get("mask_data_url")
+        if mask_data_url:
+            last_mask = decode_mask_data_url(mask_data_url).astype(bool)
+            image_state["last_mask"] = last_mask
+        else:
+            last_mask = image_state.get("last_mask")
+
         if last_mask is None:
             raise ValueError("No segmentation results available. Segment at least one object first.")
 

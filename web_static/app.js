@@ -38,7 +38,6 @@ let overlayBitmap = null;
 let isDrawing = false;
 let maskDirty = false;
 let lastDrawPoint = null;
-let isSyncingMask = false;
 
 function setStatus(text) {
   statusEl.textContent = text;
@@ -274,45 +273,6 @@ function drawMaskStroke(fromPoint, toPoint) {
   maskDirty = true;
 }
 
-async function syncMaskToServer() {
-  if (!imageId || !maskCanvas || !maskDirty || isSyncingMask) return;
-  isSyncingMask = true;
-  try {
-    const response = await fetch("/api/mask/update", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        image_id: imageId,
-        mask_data_url: maskCanvas.toDataURL("image/png"),
-      }),
-    });
-    const data = await response.json();
-    if (!response.ok) {
-      throw new Error(data.error || "Mask update failed.");
-    }
-    overlayBitmap = await loadBitmap(data.overlay_url);
-    maskDirty = false;
-    measurements = [];
-    renderResults();
-  } finally {
-    isSyncingMask = false;
-  }
-}
-
-async function ensureLatestMaskOutputs() {
-  if (!maskDirty) return true;
-  setStatus("Saving edited mask...");
-  try {
-    await syncMaskToServer();
-    draw();
-    setStatus("Edited mask saved.");
-    return true;
-  } catch (error) {
-    setStatus(error.message);
-    return false;
-  }
-}
-
 async function loadBitmap(url) {
   const blob = await fetch(url, { cache: "no-store" }).then((response) => response.blob());
   return createImageBitmap(blob);
@@ -440,15 +400,13 @@ calculateBtn.addEventListener("click", async () => {
   renderLoadingResults();
   resultsPanel.scrollIntoView({ behavior: "smooth", block: "start" });
   setStatus("Calculating pixel measurements...");
-  const ready = await ensureLatestMaskOutputs();
-  if (!ready) {
-    renderResults();
-    return;
-  }
   const response = await fetch("/api/calculate", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ image_id: imageId }),
+    body: JSON.stringify({
+      image_id: imageId,
+      mask_data_url: maskCanvas.toDataURL("image/png"),
+    }),
   });
   const data = await response.json();
   if (!response.ok) {
@@ -459,6 +417,7 @@ calculateBtn.addEventListener("click", async () => {
 
   measurements = data.segments;
   overlayBitmap = await loadBitmap(data.overlay_url);
+  maskDirty = false;
   renderResults(measurements);
   draw();
   resultsPanel.scrollIntoView({ behavior: "smooth", block: "start" });
@@ -498,14 +457,10 @@ stage.addEventListener("pointerup", async (event) => {
   isDrawing = false;
   lastDrawPoint = null;
   stage.releasePointerCapture(event.pointerId);
-  setStatus("Updating edited mask...");
-  try {
-    await syncMaskToServer();
-    draw();
-    setStatus("Mask edit applied.");
-  } catch (error) {
-    setStatus(error.message);
-  }
+  measurements = [];
+  draw();
+  renderResults();
+  setStatus("Mask edit applied locally. Run Calculate to update measurements.");
 });
 
 stage.addEventListener("pointerleave", () => {
