@@ -51,7 +51,8 @@ aside {
 
 button,
 .fileButton,
-a {
+a,
+select {
   align-items: center;
   background: #26333d;
   border: 0;
@@ -67,8 +68,13 @@ a {
   text-decoration: none;
 }
 
+select {
+  appearance: none;
+}
+
 button:disabled,
-a.disabled {
+a.disabled,
+input:disabled {
   cursor: default;
   opacity: 0.45;
   pointer-events: none;
@@ -105,6 +111,36 @@ button:not(.active).negative {
   background: #5d6870;
 }
 
+#calculateBtn {
+  background: #8254d2;
+}
+
+.metricLabel {
+  color: #44515b;
+  font-size: 12px;
+  font-weight: 700;
+  margin-top: 4px;
+}
+
+#brushSize {
+  accent-color: #215ea8;
+  width: 100%;
+}
+
+#brushSizeValue {
+  color: #51606b;
+  font-size: 12px;
+  margin-top: -4px;
+}
+
+.editTool {
+  background: #7a5d2c;
+}
+
+button:not(.active).editTool {
+  background: #6f7b84;
+}
+
 #status {
   background: #eef2f5;
   border-radius: 6px;
@@ -136,6 +172,47 @@ button:not(.active).negative {
   display: inline-block;
   height: 10px;
   width: 10px;
+}
+
+#resultsPanel {
+  border-top: 1px solid #d6dde2;
+  margin-top: 6px;
+  padding-top: 10px;
+}
+
+#resultsPanel h2 {
+  font-size: 13px;
+  margin: 0 0 8px;
+}
+
+#resultsTable {
+  border-collapse: collapse;
+  font-size: 11px;
+  width: 100%;
+}
+
+#resultsTable th,
+#resultsTable td {
+  border-bottom: 1px solid #e5eaee;
+  padding: 6px 4px;
+  text-align: left;
+  vertical-align: middle;
+}
+
+#resultsTable th {
+  color: #51606b;
+  font-weight: 700;
+}
+
+.emptyCell {
+  color: #75838d;
+}
+
+.colorSwatch {
+  border-radius: 50%;
+  display: inline-block;
+  height: 14px;
+  width: 14px;
 }
 
 #stageWrap {

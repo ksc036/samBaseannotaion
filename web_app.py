@@ -1,15 +1,18 @@
 from __future__ import annotations
 
+import base64
 import json
 import mimetypes
 import uuid
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from io import BytesIO
 from pathlib import Path
 from urllib.parse import urlparse
 
 import imageio.v3 as iio
 import numpy as np
 from scipy import ndimage as ndi
+from scipy.spatial import ConvexHull
 
 
 ROOT = Path(__file__).resolve().parent
@@ -18,6 +21,16 @@ UPLOAD_DIR = ROOT / "web_uploads"
 OUTPUT_DIR = ROOT / "web_outputs"
 DEFAULT_MODEL = "vit_b_lm"
 DEFAULT_DEVICE = "cpu"
+SEGMENT_COLORS = [
+    (241, 91, 64),
+    (47, 124, 246),
+    (24, 168, 116),
+    (243, 166, 35),
+    (139, 92, 246),
+    (223, 76, 153),
+    (18, 181, 203),
+    (139, 111, 71),
+]
 
 UPLOAD_DIR.mkdir(exist_ok=True)
 OUTPUT_DIR.mkdir(exist_ok=True)
@@ -48,6 +61,135 @@ def outline_mask(mask: np.ndarray, thickness: int = 1) -> np.ndarray:
     size = 1 + (2 * max(1, int(thickness)))
     eroded = ndi.binary_erosion(binary, structure=np.ones((size, size), dtype=bool), border_value=0)
     return ((binary & ~eroded) * 255).astype(np.uint8)
+
+
+def boundary_points(mask: np.ndarray) -> np.ndarray:
+    binary = mask > 0
+    if not np.any(binary):
+        return np.empty((0, 2), dtype=np.float32)
+    boundary = (outline_mask(mask_to_uint8(binary)) > 0)
+    coords = np.argwhere(boundary)
+    if coords.size == 0:
+        coords = np.argwhere(binary)
+    return coords[:, ::-1].astype(np.float32)
+
+
+def convex_hull_points(points: np.ndarray) -> np.ndarray:
+    if len(points) <= 2:
+        return points.astype(np.float32)
+    try:
+        hull = ConvexHull(points)
+    except Exception:
+        return points.astype(np.float32)
+    return points[hull.vertices].astype(np.float32)
+
+
+def feret_diameters(points: np.ndarray) -> tuple[float, float]:
+    if len(points) == 0:
+        return 0.0, 0.0
+    if len(points) == 1:
+        return 0.0, 0.0
+
+    diffs = points[:, None, :] - points[None, :, :]
+    feret_max = float(np.sqrt(np.max(np.sum(diffs * diffs, axis=-1))))
+
+    hull = convex_hull_points(points)
+    if len(hull) <= 1:
+        return feret_max, 0.0
+    if len(hull) == 2:
+        return feret_max, feret_max
+
+    min_width = np.inf
+    for idx in range(len(hull)):
+        p1 = hull[idx]
+        p2 = hull[(idx + 1) % len(hull)]
+        edge = p2 - p1
+        edge_length = float(np.linalg.norm(edge))
+        if edge_length == 0:
+            continue
+        unit = edge / edge_length
+        normal = np.array([-unit[1], unit[0]], dtype=np.float32)
+        projections = hull @ normal
+        width = float(projections.max() - projections.min())
+        min_width = min(min_width, width)
+
+    if not np.isfinite(min_width):
+        min_width = 0.0
+    return feret_max, float(min_width)
+
+
+def calculate_mask_metrics(mask: np.ndarray) -> dict:
+    binary = mask > 0
+    area = int(np.count_nonzero(binary))
+    if area == 0:
+        return {
+            "area_pixels": 0,
+            "equivalent_diameter_pixels": 0.0,
+            "feret_max_pixels": 0.0,
+            "feret_min_pixels": 0.0,
+            "bbox_width_pixels": 0.0,
+            "bbox_height_pixels": 0.0,
+            "perimeter_pixels": 0.0,
+        }
+
+    coords = np.argwhere(binary)
+    y_min, x_min = coords.min(axis=0)
+    y_max, x_max = coords.max(axis=0)
+    bbox_width = float(x_max - x_min + 1)
+    bbox_height = float(y_max - y_min + 1)
+    perimeter = float(np.count_nonzero(outline_mask(mask_to_uint8(binary))))
+    feret_max, feret_min = feret_diameters(boundary_points(binary))
+    equivalent_diameter = float(np.sqrt((4.0 * area) / np.pi))
+
+    return {
+        "area_pixels": area,
+        "equivalent_diameter_pixels": equivalent_diameter,
+        "feret_max_pixels": feret_max,
+        "feret_min_pixels": feret_min,
+        "bbox_width_pixels": bbox_width,
+        "bbox_height_pixels": bbox_height,
+        "perimeter_pixels": perimeter,
+    }
+
+
+def split_connected_components(mask: np.ndarray) -> list[np.ndarray]:
+    labeled, count = ndi.label(mask > 0)
+    components = []
+    for label_id in range(1, count + 1):
+        component = labeled == label_id
+        if np.any(component):
+            components.append(component)
+    components.sort(key=lambda component: int(np.count_nonzero(component)), reverse=True)
+    return components
+
+
+def decode_mask_data_url(mask_data_url: str) -> np.ndarray:
+    if "," not in mask_data_url:
+        raise ValueError("Invalid mask payload.")
+    _, encoded = mask_data_url.split(",", 1)
+    raw = base64.b64decode(encoded)
+    image = iio.imread(BytesIO(raw))
+    if image.ndim == 3:
+        image = image[..., 0]
+    return image > 0
+
+
+def persist_mask_outputs(image_id: str, mask: np.ndarray, color: tuple[int, int, int] = (226, 90, 40)) -> dict:
+    mask_255 = mask_to_uint8(mask)
+    edge_255 = outline_mask(mask_255)
+    overlay = mask_overlay_rgba(mask_255, color=color)
+    result_id = uuid.uuid4().hex
+    mask_path = OUTPUT_DIR / f"{image_id}_{result_id}_mask_255.png"
+    edge_path = OUTPUT_DIR / f"{image_id}_{result_id}_edge_1px.png"
+    overlay_path = OUTPUT_DIR / f"{image_id}_{result_id}_overlay.png"
+    iio.imwrite(mask_path, mask_255)
+    iio.imwrite(edge_path, edge_255)
+    iio.imwrite(overlay_path, overlay)
+    return {
+        "mask_url": f"/outputs/{mask_path.name}",
+        "edge_url": f"/outputs/{edge_path.name}",
+        "overlay_url": f"/outputs/{overlay_path.name}",
+    }
 
 
 def normalize_points(points: list[dict]) -> tuple[np.ndarray, np.ndarray]:
@@ -141,6 +283,10 @@ class SamWebHandler(BaseHTTPRequestHandler):
                 self.handle_upload()
             elif parsed.path == "/api/segment":
                 self.handle_segment()
+            elif parsed.path == "/api/mask/update":
+                self.handle_mask_update()
+            elif parsed.path == "/api/calculate":
+                self.handle_calculate()
             else:
                 json_response(self, 404, {"error": "Not found"})
         except Exception as exc:
@@ -172,7 +318,7 @@ class SamWebHandler(BaseHTTPRequestHandler):
 
         image = read_image(raw_path)
         view_path = save_view_image(image, image_id)
-        STATE["images"][image_id] = {"path": raw_path, "array": image, "view": view_path}
+        STATE["images"][image_id] = {"path": raw_path, "array": image, "view": view_path, "segments": [], "last_mask": None}
         set_active_image(image_id)
 
         height, width = image.shape[:2]
@@ -203,25 +349,69 @@ class SamWebHandler(BaseHTTPRequestHandler):
         predictor = get_predictor()
         masks, scores, _ = predictor.predict(point_coords=coords, point_labels=labels, multimask_output=True)
         mask = masks[int(np.argmax(scores))]
-        mask_255 = mask_to_uint8(mask)
-        edge_255 = outline_mask(mask_255)
-        overlay = mask_overlay_rgba(mask_255)
-
-        mask_path = OUTPUT_DIR / f"{image_id}_mask_255.png"
-        edge_path = OUTPUT_DIR / f"{image_id}_edge_1px.png"
-        overlay_path = OUTPUT_DIR / f"{image_id}_overlay.png"
-        iio.imwrite(mask_path, mask_255)
-        iio.imwrite(edge_path, edge_255)
-        iio.imwrite(overlay_path, overlay)
+        image_state = STATE["images"][image_id]
+        image_state["segments"] = []
+        image_state["last_mask"] = mask.astype(bool)
+        outputs = persist_mask_outputs(image_id, image_state["last_mask"])
 
         json_response(
             self,
             200,
             {
-                "mask_url": f"/outputs/{mask_path.name}",
-                "edge_url": f"/outputs/{edge_path.name}",
-                "overlay_url": f"/outputs/{overlay_path.name}",
+                **outputs,
                 "score": float(np.max(scores)),
+            },
+        )
+
+    def handle_mask_update(self):
+        payload = self.read_json()
+        image_id = payload["image_id"]
+        if image_id not in STATE["images"]:
+            raise ValueError("Unknown image_id.")
+
+        mask_data_url = payload.get("mask_data_url")
+        if not mask_data_url:
+            raise ValueError("mask_data_url is required.")
+
+        image_state = STATE["images"][image_id]
+        updated_mask = decode_mask_data_url(mask_data_url)
+        image_state["last_mask"] = updated_mask.astype(bool)
+        image_state["segments"] = []
+        outputs = persist_mask_outputs(image_id, image_state["last_mask"])
+
+        json_response(self, 200, outputs)
+
+    def handle_calculate(self):
+        payload = self.read_json()
+        image_id = payload["image_id"]
+        if image_id not in STATE["images"]:
+            raise ValueError("Unknown image_id.")
+
+        image_state = STATE["images"][image_id]
+        last_mask = image_state.get("last_mask")
+        if last_mask is None:
+            raise ValueError("No segmentation results available. Segment at least one object first.")
+
+        segments = []
+        components = split_connected_components(last_mask)
+        for index, component in enumerate(components):
+            color = SEGMENT_COLORS[index % len(SEGMENT_COLORS)]
+            metrics = calculate_mask_metrics(component)
+            segments.append(
+                {
+                    "segment_id": f"component_{index + 1}",
+                    "score": 0.0,
+                    "color": "#{:02x}{:02x}{:02x}".format(*color),
+                    **metrics,
+                }
+            )
+        image_state["segments"] = segments
+
+        json_response(
+            self,
+            200,
+            {
+                "segments": segments
             },
         )
 

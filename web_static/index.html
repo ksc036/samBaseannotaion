@@ -24,14 +24,51 @@
           <button id="positiveBtn" class="active positive">Positive</button>
           <button id="negativeBtn" class="negative">Negative</button>
         </div>
+        <div class="controlGroup">
+          <button id="brushBtn" class="editTool">Brush</button>
+          <button id="eraserBtn" class="editTool">Eraser</button>
+        </div>
         <button id="segmentBtn">Segment Object</button>
+        <button id="calculateBtn">Calculate</button>
         <button id="clearBtn">Clear Points</button>
+        <label class="metricLabel" for="brushSize">Brush size</label>
+        <input id="brushSize" type="range" min="4" max="64" value="18" />
+        <div id="brushSizeValue">18 px</div>
+        <label class="metricLabel" for="metricSelect">Diameter metric</label>
+        <select id="metricSelect">
+          <option value="equivalent_diameter_pixels">Equivalent circle diameter</option>
+          <option value="feret_max_pixels">Feret max</option>
+          <option value="feret_min_pixels">Min Feret</option>
+          <option value="bbox_width_pixels">Bounding box width</option>
+          <option value="bbox_height_pixels">Bounding box height</option>
+        </select>
         <div class="controlGroup">
           <a id="maskDownload" class="disabled" download="mask_255.png">Mask 255</a>
           <a id="edgeDownload" class="disabled" download="edge_1px.png">Edge 1px</a>
         </div>
         <div id="status">Open a microscopy image to start.</div>
         <ul id="pointList"></ul>
+        <div id="resultsPanel">
+          <h2>Segment Measurements</h2>
+          <table id="resultsTable">
+            <thead>
+              <tr>
+                <th>Color</th>
+                <th>Segment</th>
+                <th>Selected diameter (px)</th>
+                <th>Area (px²)</th>
+                <th>Feret max</th>
+                <th>Min Feret</th>
+                <th>Eq. diameter</th>
+              </tr>
+            </thead>
+            <tbody id="resultsBody">
+              <tr>
+                <td colspan="7" class="emptyCell">No calculation yet.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
       </aside>
 
       <section id="stageWrap">

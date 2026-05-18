@@ -2,7 +2,7 @@ import unittest
 
 import numpy as np
 
-from web_app import ensure_rgb, mask_overlay_rgba, mask_to_uint8, outline_mask, normalize_points
+from web_app import calculate_mask_metrics, ensure_rgb, mask_overlay_rgba, mask_to_uint8, outline_mask, normalize_points, split_connected_components
 
 
 class WebAppTests(unittest.TestCase):
@@ -60,6 +60,30 @@ class WebAppTests(unittest.TestCase):
         self.assertEqual(overlay.shape, (1, 2, 4))
         self.assertEqual(overlay[0, 0, 3], 0)
         self.assertGreater(overlay[0, 1, 3], 0)
+
+    def test_calculate_mask_metrics_returns_expected_values_for_square(self):
+        mask = np.zeros((5, 5), dtype=np.uint8)
+        mask[1:4, 1:4] = 1
+
+        metrics = calculate_mask_metrics(mask)
+
+        self.assertEqual(metrics["area_pixels"], 9)
+        self.assertAlmostEqual(metrics["equivalent_diameter_pixels"], np.sqrt((4.0 * 9.0) / np.pi), places=5)
+        self.assertAlmostEqual(metrics["bbox_width_pixels"], 3.0)
+        self.assertAlmostEqual(metrics["bbox_height_pixels"], 3.0)
+        self.assertGreater(metrics["feret_max_pixels"], 0.0)
+        self.assertGreater(metrics["feret_min_pixels"], 0.0)
+
+    def test_split_connected_components_splits_disconnected_regions(self):
+        mask = np.zeros((6, 6), dtype=np.uint8)
+        mask[1:3, 1:3] = 1
+        mask[4:6, 4:6] = 1
+
+        components = split_connected_components(mask)
+
+        self.assertEqual(len(components), 2)
+        self.assertEqual(int(np.count_nonzero(components[0])), 4)
+        self.assertEqual(int(np.count_nonzero(components[1])), 4)
 
 
 if __name__ == "__main__":
