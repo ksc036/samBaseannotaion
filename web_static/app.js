@@ -10,12 +10,20 @@ const eraserBtn = document.getElementById("eraserBtn");
 const segmentBtn = document.getElementById("segmentBtn");
 const calculateBtn = document.getElementById("calculateBtn");
 const clearBtn = document.getElementById("clearBtn");
+const pixelSizeInput = document.getElementById("pixelSizeInput");
+const pixelUnitInput = document.getElementById("pixelUnitInput");
 const brushSize = document.getElementById("brushSize");
 const brushSizeValue = document.getElementById("brushSizeValue");
 const maskDownload = document.getElementById("maskDownload");
 const edgeDownload = document.getElementById("edgeDownload");
 const resultsBody = document.getElementById("resultsBody");
 const resultsPanel = document.getElementById("resultsPanel");
+const areaHeader = document.getElementById("areaHeader");
+const feretMaxHeader = document.getElementById("feretMaxHeader");
+const feretMinHeader = document.getElementById("feretMinHeader");
+const eqDiameterHeader = document.getElementById("eqDiameterHeader");
+const bboxWidthHeader = document.getElementById("bboxWidthHeader");
+const bboxHeightHeader = document.getElementById("bboxHeightHeader");
 
 let mode = "positive";
 let imageId = null;
@@ -90,6 +98,7 @@ function renderPointList() {
 }
 
 function renderResults(rows = []) {
+  updateMeasurementHeaders();
   resultsBody.innerHTML = "";
   if (rows.length === 0) {
     const row = document.createElement("tr");
@@ -102,6 +111,7 @@ function renderResults(rows = []) {
     return;
   }
 
+  const scale = getPixelScale();
   rows.forEach((segment, index) => {
     const row = document.createElement("tr");
     const colorCell = document.createElement("td");
@@ -114,22 +124,22 @@ function renderResults(rows = []) {
     segmentCell.textContent = `#${index + 1}`;
 
     const areaCell = document.createElement("td");
-    areaCell.textContent = `${segment.area_pixels}`;
+    areaCell.textContent = formatArea(segment.area_pixels, scale);
 
     const feretMaxCell = document.createElement("td");
-    feretMaxCell.textContent = formatNumber(segment.feret_max_pixels);
+    feretMaxCell.textContent = formatLength(segment.feret_max_pixels, scale);
 
     const feretMinCell = document.createElement("td");
-    feretMinCell.textContent = formatNumber(segment.feret_min_pixels);
+    feretMinCell.textContent = formatLength(segment.feret_min_pixels, scale);
 
     const eqCell = document.createElement("td");
-    eqCell.textContent = formatNumber(segment.equivalent_diameter_pixels);
+    eqCell.textContent = formatLength(segment.equivalent_diameter_pixels, scale);
 
     const bboxWidthCell = document.createElement("td");
-    bboxWidthCell.textContent = formatNumber(segment.bbox_width_pixels);
+    bboxWidthCell.textContent = formatLength(segment.bbox_width_pixels, scale);
 
     const bboxHeightCell = document.createElement("td");
-    bboxHeightCell.textContent = formatNumber(segment.bbox_height_pixels);
+    bboxHeightCell.textContent = formatLength(segment.bbox_height_pixels, scale);
 
     row.append(colorCell, segmentCell, areaCell, feretMaxCell, feretMinCell, eqCell, bboxWidthCell, bboxHeightCell);
     resultsBody.append(row);
@@ -149,6 +159,35 @@ function renderLoadingResults() {
 
 function formatNumber(value) {
   return Number(value || 0).toFixed(2);
+}
+
+function getPixelScale() {
+  const raw = Number(pixelSizeInput.value);
+  if (!Number.isFinite(raw) || raw <= 0) return null;
+  const unit = (pixelUnitInput.value || "").trim() || "unit";
+  return { value: raw, unit };
+}
+
+function formatLength(pixelValue, scale) {
+  if (!scale) return formatNumber(pixelValue);
+  return formatNumber(Number(pixelValue || 0) * scale.value);
+}
+
+function formatArea(pixelArea, scale) {
+  if (!scale) return `${pixelArea}`;
+  return formatNumber(Number(pixelArea || 0) * scale.value * scale.value);
+}
+
+function updateMeasurementHeaders() {
+  const scale = getPixelScale();
+  const lengthUnit = scale ? scale.unit : "px";
+  const areaUnit = scale ? `${scale.unit}²` : "px²";
+  areaHeader.textContent = `Area (${areaUnit})`;
+  feretMaxHeader.textContent = `Feret max (${lengthUnit})`;
+  feretMinHeader.textContent = `Min Feret (${lengthUnit})`;
+  eqDiameterHeader.textContent = `Eq. diameter (${lengthUnit})`;
+  bboxWidthHeader.textContent = `BBox W (${lengthUnit})`;
+  bboxHeightHeader.textContent = `BBox H (${lengthUnit})`;
 }
 
 function triggerDownload(url, filename) {
@@ -356,6 +395,8 @@ eraserBtn.addEventListener("click", () => setMode("eraser"));
 brushSize.addEventListener("input", () => {
   brushSizeValue.textContent = `${brushSize.value} px`;
 });
+pixelSizeInput.addEventListener("input", () => renderResults(measurements));
+pixelUnitInput.addEventListener("input", () => renderResults(measurements));
 
 clearBtn.addEventListener("click", () => {
   points = [];

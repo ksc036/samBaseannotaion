@@ -46,13 +46,16 @@ aside {
   display: flex;
   flex-direction: column;
   gap: 10px;
+  min-height: 0;
   padding: 14px;
 }
 
 button,
 .fileButton,
 a,
-select {
+select,
+input[type="number"],
+input[type="text"] {
   align-items: center;
   background: #26333d;
   border: 0;
@@ -70,6 +73,16 @@ select {
 
 select {
   appearance: none;
+}
+
+input[type="number"],
+input[type="text"] {
+  color: #ffffff;
+}
+
+input[type="number"]::placeholder,
+input[type="text"]::placeholder {
+  color: rgba(255, 255, 255, 0.7);
 }
 
 button:disabled,
@@ -122,6 +135,12 @@ button:not(.active).negative {
   margin-top: 4px;
 }
 
+.scaleRow {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: minmax(0, 1fr) 72px;
+}
+
 #brushSize {
   accent-color: #215ea8;
   width: 100%;
@@ -151,13 +170,19 @@ button:not(.active).editTool {
   padding: 10px;
 }
 
-#pointList {
+#pointListWrap {
   border-top: 1px solid #d6dde2;
+  max-height: 180px;
+  min-height: 0;
+  overflow-y: auto;
+  padding-top: 10px;
+}
+
+#pointList {
   font-size: 12px;
   list-style: none;
   margin: 0;
-  overflow: auto;
-  padding: 10px 0 0;
+  padding: 0;
 }
 
 #pointList li {
@@ -177,6 +202,7 @@ button:not(.active).editTool {
 #resultsPanel {
   border-top: 1px solid #d6dde2;
   margin-top: 6px;
+  min-height: 0;
   padding-top: 10px;
 }
 
@@ -185,9 +211,16 @@ button:not(.active).editTool {
   margin: 0 0 8px;
 }
 
+#resultsTableWrap {
+  overflow-x: auto;
+  overflow-y: hidden;
+  width: 100%;
+}
+
 #resultsTable {
   border-collapse: collapse;
   font-size: 11px;
+  min-width: 520px;
   width: 100%;
 }
 
