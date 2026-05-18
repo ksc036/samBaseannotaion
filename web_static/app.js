@@ -15,7 +15,6 @@ const pixelUnitInput = document.getElementById("pixelUnitInput");
 const brushSize = document.getElementById("brushSize");
 const brushSizeValue = document.getElementById("brushSizeValue");
 const maskDownload = document.getElementById("maskDownload");
-const edgeDownload = document.getElementById("edgeDownload");
 const resultsBody = document.getElementById("resultsBody");
 const resultsPanel = document.getElementById("resultsPanel");
 const areaHeader = document.getElementById("areaHeader");
@@ -321,7 +320,6 @@ async function setMaskFromUrl(maskUrl, nextOverlayUrl) {
   currentStrokePoints = [];
   actionHistory = [];
   maskDownload.classList.remove("disabled");
-  edgeDownload.classList.remove("disabled");
 }
 
 function drawMaskStroke(fromPoint, toPoint) {
@@ -364,46 +362,6 @@ function drawTransientStroke() {
 async function loadBitmap(url) {
   const blob = await fetch(url, { cache: "no-store" }).then((response) => response.blob());
   return createImageBitmap(blob);
-}
-
-function buildEdgeCanvas() {
-  if (!maskCanvas || !maskCtx) return null;
-  const source = maskCtx.getImageData(0, 0, naturalWidth, naturalHeight);
-  const edgeCanvas = document.createElement("canvas");
-  edgeCanvas.width = naturalWidth;
-  edgeCanvas.height = naturalHeight;
-  const edgeCtx = edgeCanvas.getContext("2d");
-  const edgeData = edgeCtx.createImageData(naturalWidth, naturalHeight);
-
-  const isForeground = (x, y) => {
-    if (x < 0 || y < 0 || x >= naturalWidth || y >= naturalHeight) return false;
-    const index = (y * naturalWidth + x) * 4;
-    return source.data[index] > 0;
-  };
-
-  for (let y = 0; y < naturalHeight; y += 1) {
-    for (let x = 0; x < naturalWidth; x += 1) {
-      if (!isForeground(x, y)) continue;
-      const edge =
-        !isForeground(x - 1, y) ||
-        !isForeground(x + 1, y) ||
-        !isForeground(x, y - 1) ||
-        !isForeground(x, y + 1) ||
-        !isForeground(x - 1, y - 1) ||
-        !isForeground(x + 1, y - 1) ||
-        !isForeground(x - 1, y + 1) ||
-        !isForeground(x + 1, y + 1);
-      if (!edge) continue;
-      const index = (y * naturalWidth + x) * 4;
-      edgeData.data[index] = 255;
-      edgeData.data[index + 1] = 255;
-      edgeData.data[index + 2] = 255;
-      edgeData.data[index + 3] = 255;
-    }
-  }
-
-  edgeCtx.putImageData(edgeData, 0, 0);
-  return edgeCanvas;
 }
 
 fileInput.addEventListener("change", async () => {
@@ -473,9 +431,7 @@ segmentBtn.addEventListener("click", async () => {
   }
   await setMaskFromUrl(data.mask_url, data.overlay_url);
   maskDownload.href = data.mask_url;
-  edgeDownload.href = data.edge_url;
   maskDownload.classList.remove("disabled");
-  edgeDownload.classList.remove("disabled");
   measurements = [];
   renderResults();
   draw();
@@ -581,14 +537,7 @@ window.addEventListener("keydown", async (event) => {
 maskDownload.addEventListener("click", (event) => {
   event.preventDefault();
   if (!maskCanvas) return;
-  triggerCanvasDownload(maskCanvas, maskDownload.download || "mask_255.png");
-});
-
-edgeDownload.addEventListener("click", (event) => {
-  event.preventDefault();
-  const edgeCanvas = buildEdgeCanvas();
-  if (!edgeCanvas) return;
-  triggerCanvasDownload(edgeCanvas, edgeDownload.download || "edge_1px.png");
+  triggerCanvasDownload(maskCanvas, maskDownload.download || "mask.png");
 });
 
 window.addEventListener("resize", () => {
