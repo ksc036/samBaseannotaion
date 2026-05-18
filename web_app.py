@@ -90,7 +90,13 @@ def save_view_image(image: np.ndarray, image_id: str) -> Path:
 
 def get_predictor():
     if STATE["predictor"] is None:
-        from micro_sam.util import get_sam_model
+        try:
+            from micro_sam.util import get_sam_model
+        except ImportError as exc:
+            raise RuntimeError(
+                "micro_sam is not installed in the active environment. "
+                "Create the conda environment from environment.yml and launch the app from it."
+            ) from exc
 
         STATE["predictor"] = get_sam_model(model_type=DEFAULT_MODEL, device=DEFAULT_DEVICE)
     return STATE["predictor"]
@@ -221,7 +227,7 @@ class SamWebHandler(BaseHTTPRequestHandler):
 
 
 def main():
-    host = "127.0.0.1"
+    host = "0.0.0.0"
     port = 8765
     print(f"micro-sam web UI: http://{host}:{port}")
     print("Model loads on first image upload. On CPU this can take a while.")

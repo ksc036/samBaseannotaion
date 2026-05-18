@@ -1,5 +1,9 @@
-name: micro-sam
+name: sambaseannotation
 channels:
   - conda-forge
 dependencies:
+  - python=3.11
   - micro_sam
+  - imageio
+  - numpy
+  - scipy

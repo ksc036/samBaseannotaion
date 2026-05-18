@@ -15,17 +15,37 @@ micro-sam 기반 point prompt segmentation 웹 프로토타입입니다.
 
 ## 설치
 
-Miniforge 또는 conda가 설치되어 있다고 가정합니다.
+`micro_sam` 공식 문서는 conda 설치를 권장하며 macOS도 지원합니다. 이 프로젝트도 같은 방식을 따릅니다.
 
-```powershell
+macOS에서 `conda` 명령이 없다면 먼저 Miniforge를 설치하세요.
+
+- Miniforge: https://conda-forge.org/download/
+
+그다음 저장소 폴더에서 환경을 만듭니다.
+
+```bash
 conda env create -f environment.yml
+conda activate sambaseannotation
 ```
 
-이미 `micro-sam` 환경이 있다면 다시 만들 필요 없습니다.
+이미 `micro_sam`, `imageio`, `numpy`, `scipy`가 들어 있는 conda 환경이 있다면 그 환경을 사용해도 됩니다.
 
 ## 실행
 
-Windows에서는 더블클릭:
+macOS / Linux:
+
+```bash
+chmod +x launch_web_sam.sh launch_web_sam.command
+./launch_web_sam.sh
+```
+
+Finder에서 더블클릭으로 실행하려면:
+
+```text
+launch_web_sam.command
+```
+
+Windows:
 
 ```text
 launch_web_sam.bat
@@ -37,10 +57,10 @@ launch_web_sam.bat
 .\launch_web_sam.ps1
 ```
 
-브라우저에서 열기:
+브라우저 주소:
 
 ```text
-http://127.0.0.1:8765
+http://localhost:8765
 ```
 
 ## 사용법
@@ -58,3 +78,5 @@ http://127.0.0.1:8765
 - 첫 이미지 업로드 시 모델 로딩과 embedding 계산 때문에 시간이 걸릴 수 있습니다.
 - GPU를 쓰려면 `web_app.py`의 `DEFAULT_DEVICE`를 `cuda`로 바꾸고 CUDA PyTorch 환경을 구성해야 합니다.
 - 모델 checkpoint는 처음 실행 시 micro-sam 캐시에 다운로드됩니다.
+- macOS Apple Silicon에서도 CPU 실행은 가능하지만 첫 로딩은 느릴 수 있습니다.
+- `micro_sam is not installed` 오류가 나오면 `conda activate sambaseannotation` 후 다시 실행하세요.
