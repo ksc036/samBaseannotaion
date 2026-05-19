@@ -10,6 +10,9 @@ const eraserBtn = document.getElementById("eraserBtn");
 const segmentBtn = document.getElementById("segmentBtn");
 const calculateBtn = document.getElementById("calculateBtn");
 const clearBtn = document.getElementById("clearBtn");
+const scalePixelInput = document.getElementById("scalePixelInput");
+const scalePickBtn = document.getElementById("scalePickBtn");
+const scaleLengthInput = document.getElementById("scaleLengthInput");
 const pixelSizeInput = document.getElementById("pixelSizeInput");
 const pixelUnitInput = document.getElementById("pixelUnitInput");
 const brushSize = document.getElementById("brushSize");
@@ -27,6 +30,9 @@ const bboxHeightHeader = document.getElementById("bboxHeightHeader");
 let mode = "positive";
 let imageId = null;
 let imageBitmap = null;
+let sourceImageCanvas = null;
+let sourceImageCtx = null;
+let sourceImageData = null;
 let naturalWidth = 0;
 let naturalHeight = 0;
 let points = [];
@@ -34,7 +40,9 @@ let measurements = [];
 let maskCanvas = null;
 let maskCtx = null;
 let overlayBitmap = null;
+let scaleOverlayBitmap = null;
 let isDrawing = false;
+let isScalePickMode = false;
 let maskDirty = false;
 let lastDrawPoint = null;
 let currentStrokePoints = [];
@@ -47,10 +55,21 @@ function setStatus(text) {
 
 function setMode(nextMode) {
   mode = nextMode;
+  setScalePickMode(false);
   positiveBtn.classList.toggle("active", mode === "positive");
   negativeBtn.classList.toggle("active", mode === "negative");
   brushBtn.classList.toggle("active", mode === "brush");
   eraserBtn.classList.toggle("active", mode === "eraser");
+}
+
+function setScalePickMode(enabled) {
+  isScalePickMode = enabled;
+  if (!enabled) {
+    scaleOverlayBitmap = null;
+  }
+  scalePickBtn.classList.toggle("active", enabled);
+  stage.classList.toggle("scalePickMode", enabled);
+  draw();
 }
 
 function fitCanvas() {
@@ -69,6 +88,9 @@ function draw() {
   ctx.drawImage(imageBitmap, 0, 0, stage.width, stage.height);
   if (overlayBitmap) {
     ctx.drawImage(overlayBitmap, 0, 0, stage.width, stage.height);
+  }
+  if (scaleOverlayBitmap) {
+    ctx.drawImage(scaleOverlayBitmap, 0, 0, stage.width, stage.height);
   }
   if (currentStrokePoints.length > 0) {
     drawTransientStroke();
@@ -163,6 +185,100 @@ function formatNumber(value) {
   return Number(value || 0).toFixed(2);
 }
 
+function updatePixelSizeFromCalibration() {
+  const pixelWidth = Number(scalePixelInput.value);
+  const actualLength = Number(scaleLengthInput.value);
+  if (!Number.isFinite(pixelWidth) || pixelWidth <= 0 || !Number.isFinite(actualLength) || actualLength <= 0) {
+    pixelSizeInput.value = "";
+    renderResults(measurements);
+    return;
+  }
+  pixelSizeInput.value = (actualLength / pixelWidth).toFixed(8).replace(/\.?0+$/, "");
+  renderResults(measurements);
+}
+
+function colorDistanceAt(data, pixelIndex, target) {
+  const offset = pixelIndex * 4;
+  return Math.abs(data[offset] - target.r) + Math.abs(data[offset + 1] - target.g) + Math.abs(data[offset + 2] - target.b);
+}
+
+async function buildScaleOverlay(selected) {
+  const overlayCanvas = document.createElement("canvas");
+  overlayCanvas.width = naturalWidth;
+  overlayCanvas.height = naturalHeight;
+  const overlayCtx = overlayCanvas.getContext("2d");
+  const overlayData = overlayCtx.createImageData(naturalWidth, naturalHeight);
+
+  for (let index = 0; index < selected.length; index += 1) {
+    if (!selected[index]) continue;
+    const offset = index * 4;
+    overlayData.data[offset] = 24;
+    overlayData.data[offset + 1] = 220;
+    overlayData.data[offset + 2] = 235;
+    overlayData.data[offset + 3] = 135;
+  }
+
+  overlayCtx.putImageData(overlayData, 0, 0);
+  return createImageBitmap(overlayCanvas);
+}
+
+async function detectScaleBarAt(point) {
+  if (!sourceImageData) {
+    setStatus("Open an image first.");
+    return;
+  }
+
+  const x = Math.max(0, Math.min(naturalWidth - 1, Math.round(point.x)));
+  const y = Math.max(0, Math.min(naturalHeight - 1, Math.round(point.y)));
+  const startIndex = y * naturalWidth + x;
+  const source = sourceImageData.data;
+  const startOffset = startIndex * 4;
+  const target = {
+    r: source[startOffset],
+    g: source[startOffset + 1],
+    b: source[startOffset + 2],
+  };
+  const tolerance = 42;
+  const visited = new Uint8Array(naturalWidth * naturalHeight);
+  const selected = new Uint8Array(naturalWidth * naturalHeight);
+  const stack = [startIndex];
+  let count = 0;
+  let minX = x;
+  let maxX = x;
+
+  while (stack.length > 0) {
+    const index = stack.pop();
+    if (visited[index]) continue;
+    visited[index] = 1;
+    if (colorDistanceAt(source, index, target) > tolerance) continue;
+
+    selected[index] = 1;
+    count += 1;
+    const px = index % naturalWidth;
+    const py = Math.floor(index / naturalWidth);
+    minX = Math.min(minX, px);
+    maxX = Math.max(maxX, px);
+
+    if (px > 0) stack.push(index - 1);
+    if (px < naturalWidth - 1) stack.push(index + 1);
+    if (py > 0) stack.push(index - naturalWidth);
+    if (py < naturalHeight - 1) stack.push(index + naturalWidth);
+  }
+
+  if (count === 0) {
+    scaleOverlayBitmap = null;
+    draw();
+    setStatus("Could not detect a matching scale bar region from that click.");
+    return;
+  }
+
+  scaleOverlayBitmap = await buildScaleOverlay(selected);
+  scalePixelInput.value = String(maxX - minX + 1);
+  updatePixelSizeFromCalibration();
+  draw();
+  setStatus(`Scale bar region selected: ${maxX - minX + 1} px wide.`);
+}
+
 function getPixelScale() {
   const raw = Number(pixelSizeInput.value);
   if (!Number.isFinite(raw) || raw <= 0) return null;
@@ -225,6 +341,16 @@ function ensureMaskCanvas() {
   maskCtx = maskCanvas.getContext("2d", { willReadFrequently: true });
   maskCtx.fillStyle = "#000000";
   maskCtx.fillRect(0, 0, naturalWidth, naturalHeight);
+}
+
+function prepareSourceImageData() {
+  if (!imageBitmap) return;
+  sourceImageCanvas = document.createElement("canvas");
+  sourceImageCanvas.width = naturalWidth;
+  sourceImageCanvas.height = naturalHeight;
+  sourceImageCtx = sourceImageCanvas.getContext("2d", { willReadFrequently: true });
+  sourceImageCtx.drawImage(imageBitmap, 0, 0, naturalWidth, naturalHeight);
+  sourceImageData = sourceImageCtx.getImageData(0, 0, naturalWidth, naturalHeight);
 }
 
 function clonePoints() {
@@ -391,10 +517,14 @@ fileInput.addEventListener("change", async () => {
   pendingStrokeSnapshot = null;
   actionHistory = [];
   imageBitmap = await loadBitmap(data.image_data_url);
+  prepareSourceImageData();
+  ensureMaskCanvas();
+  scaleOverlayBitmap = null;
+  setScalePickMode(false);
   fitCanvas();
   draw();
   renderResults();
-  setStatus("Image ready. Add positive and negative points, then Segment Object.");
+  setStatus("Image ready. Add points, paint the mask directly, or segment an object.");
 });
 
 positiveBtn.addEventListener("click", () => setMode("positive"));
@@ -404,8 +534,21 @@ eraserBtn.addEventListener("click", () => setMode("eraser"));
 brushSize.addEventListener("input", () => {
   brushSizeValue.textContent = `${brushSize.value} px`;
 });
-pixelSizeInput.addEventListener("input", () => renderResults(measurements));
-pixelUnitInput.addEventListener("input", () => renderResults(measurements));
+scalePixelInput.addEventListener("input", updatePixelSizeFromCalibration);
+scaleLengthInput.addEventListener("input", updatePixelSizeFromCalibration);
+pixelUnitInput.addEventListener("change", () => renderResults(measurements));
+scalePickBtn.addEventListener("click", () => {
+  if (!imageBitmap) {
+    setStatus("Open an image first.");
+    return;
+  }
+  setScalePickMode(!isScalePickMode);
+  if (isScalePickMode) {
+    setStatus("Pick Scale Bar mode is on. Click the scale bar to highlight it and fill the pixel width.");
+  } else {
+    setStatus("Pick Scale Bar mode cancelled.");
+  }
+});
 
 clearBtn.addEventListener("click", () => {
   points = [];
@@ -439,7 +582,7 @@ segmentBtn.addEventListener("click", async () => {
 
 calculateBtn.addEventListener("click", async () => {
   if (!imageId || !maskCanvas) {
-    setStatus("Segment at least one object before calculating.");
+    setStatus("Open an image first.");
     return;
   }
   measurements = [];
@@ -474,16 +617,19 @@ calculateBtn.addEventListener("click", async () => {
 stage.addEventListener("pointerdown", (event) => {
   if (!imageBitmap) return;
   const point = clientToImageCoords(event);
+  if (isScalePickMode) {
+    detectScaleBarAt(point);
+    setScalePickMode(false);
+    return;
+  }
   if (isEditMode()) {
-    if (!maskCanvas) {
-      setStatus("Run Segment Object first, then edit the mask.");
-      return;
-    }
+    ensureMaskCanvas();
     isDrawing = true;
     pendingStrokeSnapshot = captureSnapshot({ includeMask: true });
     lastDrawPoint = point;
     currentStrokePoints = [point];
     drawMaskStroke(point, point);
+    maskDownload.classList.remove("disabled");
     draw();
     stage.setPointerCapture(event.pointerId);
     return;

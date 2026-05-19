@@ -24,26 +24,36 @@
           <button id="positiveBtn" class="active positive">Positive</button>
           <button id="negativeBtn" class="negative">Negative</button>
         </div>
+        <button id="segmentBtn">Segment Object</button>
+        <button id="clearBtn">Clear Points</button>
         <div class="controlGroup">
           <button id="brushBtn" class="editTool">Brush</button>
           <button id="eraserBtn" class="editTool">Eraser</button>
         </div>
-        <button id="segmentBtn">Segment Object</button>
-        <button id="calculateBtn">Calculate</button>
-        <button id="clearBtn">Clear Points</button>
-        <label class="metricLabel" for="pixelSizeInput">Pixel size</label>
-        <div class="scaleRow">
-          <input id="pixelSizeInput" type="number" min="0" step="any" placeholder="actual distance / pixel" />
-          <input id="pixelUnitInput" type="text" value="um" placeholder="unit" />
-        </div>
         <label class="metricLabel" for="brushSize">Brush size</label>
         <input id="brushSize" type="range" min="4" max="64" value="18" />
         <div id="brushSizeValue">18 px</div>
+        <label class="metricLabel" for="scalePixelInput">Scale calibration</label>
+        <div class="calibrationGroup">
+          <button id="scalePickBtn" type="button" class="secondaryButton">Pick Scale Bar</button>
+          <input id="scalePixelInput" type="number" min="0" step="any" placeholder="scale width (px)" />
+          <input id="scaleLengthInput" type="number" min="0" step="any" placeholder="actual length" />
+        </div>
+        <label class="metricLabel" for="pixelSizeInput">Pixel size</label>
+        <div class="scaleRow">
+          <input id="pixelSizeInput" type="number" min="0" step="any" placeholder="actual distance / pixel" readonly />
+          <select id="pixelUnitInput" aria-label="Pixel size unit">
+            <option value="mm">mm</option>
+            <option value="um" selected>um</option>
+            <option value="nm">nm</option>
+          </select>
+        </div>
         <a id="maskDownload" class="disabled" download="mask.png">Mask Download</a>
         <div id="status">Open a microscopy image to start.</div>
         <div id="pointListWrap">
           <ul id="pointList"></ul>
         </div>
+        <button id="calculateBtn">Calculate</button>
         <div id="resultsPanel">
           <h2>Segment Measurements</h2>
           <div id="resultsTableWrap">
