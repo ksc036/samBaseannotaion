@@ -351,7 +351,6 @@ class SamWebHandler(BaseHTTPRequestHandler):
             "mask_save_path": mask_save_path,
             "folder_name": folder_name,
         }
-        set_active_image(image_id)
 
         height, width = image.shape[:2]
         json_response(

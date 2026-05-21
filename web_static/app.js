@@ -583,8 +583,23 @@ scalePickBtn.addEventListener("click", () => {
 
 clearBtn.addEventListener("click", () => {
   points = [];
+  measurements = [];
+  overlayBitmap = null;
+  scaleOverlayBitmap = null;
+  currentStrokePoints = [];
+  pendingStrokeSnapshot = null;
+  actionHistory = [];
+  maskDirty = false;
+  setScalePickMode(false);
+  if (maskCtx) {
+    maskCtx.clearRect(0, 0, naturalWidth, naturalHeight);
+    maskCtx.fillStyle = "#000000";
+    maskCtx.fillRect(0, 0, naturalWidth, naturalHeight);
+  }
+  maskDownload.classList.add("disabled");
   draw();
-  setStatus("Points cleared.");
+  renderResults();
+  setStatus("Cleared points, overlays, and local mask edits.");
 });
 
 segmentBtn.addEventListener("click", async () => {
