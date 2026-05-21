@@ -279,6 +279,6 @@ button:not(.active).editTool {
   max-width: 100%;
 }
 
-#stage.scalePickMode {
+#stage.crosshairMode {
   cursor: crosshair;
 }

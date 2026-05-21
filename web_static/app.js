@@ -17,6 +17,10 @@ const pixelSizeInput = document.getElementById("pixelSizeInput");
 const pixelUnitInput = document.getElementById("pixelUnitInput");
 const brushSize = document.getElementById("brushSize");
 const brushSizeValue = document.getElementById("brushSizeValue");
+const pointOpacity = document.getElementById("pointOpacity");
+const pointOpacityValue = document.getElementById("pointOpacityValue");
+const overlayOpacity = document.getElementById("overlayOpacity");
+const overlayOpacityValue = document.getElementById("overlayOpacityValue");
 const maskDownload = document.getElementById("maskDownload");
 const resultsBody = document.getElementById("resultsBody");
 const resultsPanel = document.getElementById("resultsPanel");
@@ -60,6 +64,12 @@ function setMode(nextMode) {
   negativeBtn.classList.toggle("active", mode === "negative");
   brushBtn.classList.toggle("active", mode === "brush");
   eraserBtn.classList.toggle("active", mode === "eraser");
+  updateStageCursor();
+}
+
+function updateStageCursor() {
+  const showCrosshair = isScalePickMode || mode === "positive" || mode === "negative" || mode === "brush" || mode === "eraser";
+  stage.classList.toggle("crosshairMode", showCrosshair);
 }
 
 function setScalePickMode(enabled) {
@@ -68,7 +78,7 @@ function setScalePickMode(enabled) {
     scaleOverlayBitmap = null;
   }
   scalePickBtn.classList.toggle("active", enabled);
-  stage.classList.toggle("scalePickMode", enabled);
+  updateStageCursor();
   draw();
 }
 
@@ -87,21 +97,28 @@ function draw() {
   if (!imageBitmap) return;
   ctx.drawImage(imageBitmap, 0, 0, stage.width, stage.height);
   if (overlayBitmap) {
+    ctx.save();
+    ctx.globalAlpha = Number(overlayOpacity.value) / 100;
     ctx.drawImage(overlayBitmap, 0, 0, stage.width, stage.height);
+    ctx.restore();
   }
   if (scaleOverlayBitmap) {
+    ctx.save();
+    ctx.globalAlpha = Number(overlayOpacity.value) / 100;
     ctx.drawImage(scaleOverlayBitmap, 0, 0, stage.width, stage.height);
+    ctx.restore();
   }
   if (currentStrokePoints.length > 0) {
     drawTransientStroke();
   }
+  const pointAlpha = Number(pointOpacity.value) / 100;
   for (const point of points) {
     const x = (point.x / naturalWidth) * stage.width;
     const y = (point.y / naturalHeight) * stage.height;
     ctx.beginPath();
     ctx.arc(x, y, 6, 0, Math.PI * 2);
-    ctx.fillStyle = point.type === "positive" ? "#16d174" : "#ff3e3e";
-    ctx.strokeStyle = "#ffffff";
+    ctx.fillStyle = point.type === "positive" ? `rgba(22, 209, 116, ${pointAlpha})` : `rgba(255, 62, 62, ${pointAlpha})`;
+    ctx.strokeStyle = `rgba(255, 255, 255, ${Math.max(pointAlpha, 0.35)})`;
     ctx.lineWidth = 2;
     ctx.fill();
     ctx.stroke();
@@ -116,6 +133,7 @@ function renderPointList() {
     const dot = document.createElement("span");
     dot.className = "dot";
     dot.style.background = point.type === "positive" ? "#16d174" : "#ff3e3e";
+    dot.style.opacity = String(Number(pointOpacity.value) / 100);
     item.append(dot, `${index + 1}. ${point.type} (${Math.round(point.x)}, ${Math.round(point.y)})`);
     pointList.append(item);
   });
@@ -183,6 +201,11 @@ function renderLoadingResults() {
 
 function formatNumber(value) {
   return Number(value || 0).toFixed(2);
+}
+
+function updateOpacityLabels() {
+  pointOpacityValue.textContent = `${pointOpacity.value}%`;
+  overlayOpacityValue.textContent = `${overlayOpacity.value}%`;
 }
 
 function updatePixelSizeFromCalibration() {
@@ -534,6 +557,14 @@ eraserBtn.addEventListener("click", () => setMode("eraser"));
 brushSize.addEventListener("input", () => {
   brushSizeValue.textContent = `${brushSize.value} px`;
 });
+pointOpacity.addEventListener("input", () => {
+  updateOpacityLabels();
+  draw();
+});
+overlayOpacity.addEventListener("input", () => {
+  updateOpacityLabels();
+  draw();
+});
 scalePixelInput.addEventListener("input", updatePixelSizeFromCalibration);
 scaleLengthInput.addEventListener("input", updatePixelSizeFromCalibration);
 pixelUnitInput.addEventListener("change", () => renderResults(measurements));
@@ -689,3 +720,5 @@ window.addEventListener("resize", () => {
   fitCanvas();
   draw();
 });
+
+updateOpacityLabels();
