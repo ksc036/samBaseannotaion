@@ -21,7 +21,6 @@ const pointOpacity = document.getElementById("pointOpacity");
 const pointOpacityValue = document.getElementById("pointOpacityValue");
 const overlayOpacity = document.getElementById("overlayOpacity");
 const overlayOpacityValue = document.getElementById("overlayOpacityValue");
-const maskDownload = document.getElementById("maskDownload");
 const resultsBody = document.getElementById("resultsBody");
 const resultsPanel = document.getElementById("resultsPanel");
 const areaHeader = document.getElementById("areaHeader");
@@ -52,6 +51,7 @@ let lastDrawPoint = null;
 let currentStrokePoints = [];
 let pendingStrokeSnapshot = null;
 let actionHistory = [];
+let hoveredPointIndex = null;
 
 function setStatus(text) {
   statusEl.textContent = text;
@@ -112,29 +112,39 @@ function draw() {
     drawTransientStroke();
   }
   const pointAlpha = Number(pointOpacity.value) / 100;
-  for (const point of points) {
+  for (const [index, point] of points.entries()) {
     const x = (point.x / naturalWidth) * stage.width;
     const y = (point.y / naturalHeight) * stage.height;
+    const isHovered = hoveredPointIndex === index;
     ctx.beginPath();
-    ctx.arc(x, y, 6, 0, Math.PI * 2);
+    ctx.arc(x, y, isHovered ? 9 : 6, 0, Math.PI * 2);
     ctx.fillStyle = point.type === "positive" ? `rgba(22, 209, 116, ${pointAlpha})` : `rgba(255, 62, 62, ${pointAlpha})`;
-    ctx.strokeStyle = `rgba(255, 255, 255, ${Math.max(pointAlpha, 0.35)})`;
-    ctx.lineWidth = 2;
+    ctx.strokeStyle = isHovered ? "rgba(255, 214, 10, 0.95)" : `rgba(255, 255, 255, ${Math.max(pointAlpha, 0.35)})`;
+    ctx.lineWidth = isHovered ? 3 : 2;
     ctx.fill();
     ctx.stroke();
   }
-  renderPointList();
 }
 
 function renderPointList() {
   pointList.innerHTML = "";
   points.forEach((point, index) => {
     const item = document.createElement("li");
+    item.classList.toggle("active", hoveredPointIndex === index);
+    item.dataset.pointIndex = String(index);
     const dot = document.createElement("span");
     dot.className = "dot";
     dot.style.background = point.type === "positive" ? "#16d174" : "#ff3e3e";
     dot.style.opacity = String(Number(pointOpacity.value) / 100);
-    item.append(dot, `${index + 1}. ${point.type} (${Math.round(point.x)}, ${Math.round(point.y)})`);
+    const label = document.createElement("span");
+    label.className = "pointLabel";
+    label.textContent = `${index + 1}. ${point.type} (${Math.round(point.x)}, ${Math.round(point.y)})`;
+    const removeButton = document.createElement("button");
+    removeButton.type = "button";
+    removeButton.className = "pointDeleteBtn";
+    removeButton.textContent = "Delete";
+    removeButton.dataset.pointIndex = String(index);
+    item.append(dot, label, removeButton);
     pointList.append(item);
   });
 }
@@ -223,6 +233,93 @@ function updatePixelSizeFromCalibration() {
 function colorDistanceAt(data, pixelIndex, target) {
   const offset = pixelIndex * 4;
   return Math.abs(data[offset] - target.r) + Math.abs(data[offset + 1] - target.g) + Math.abs(data[offset + 2] - target.b);
+}
+
+function hexToRgb(hex) {
+  const value = hex.replace("#", "");
+  return {
+    r: Number.parseInt(value.slice(0, 2), 16),
+    g: Number.parseInt(value.slice(2, 4), 16),
+    b: Number.parseInt(value.slice(4, 6), 16),
+  };
+}
+
+async function imageDataToBitmap(imageData) {
+  const canvas = document.createElement("canvas");
+  canvas.width = imageData.width;
+  canvas.height = imageData.height;
+  const context = canvas.getContext("2d");
+  context.putImageData(imageData, 0, 0);
+  return createImageBitmap(canvas);
+}
+
+function splitConnectedComponents(maskValues, width, height) {
+  const visited = new Uint8Array(maskValues.length);
+  const components = [];
+
+  for (let index = 0; index < maskValues.length; index += 1) {
+    if (!maskValues[index] || visited[index]) continue;
+    const stack = [index];
+    const component = [];
+
+    while (stack.length > 0) {
+      const current = stack.pop();
+      if (visited[current] || !maskValues[current]) continue;
+      visited[current] = 1;
+      component.push(current);
+
+      const x = current % width;
+      const y = Math.floor(current / width);
+      if (x > 0) stack.push(current - 1);
+      if (x < width - 1) stack.push(current + 1);
+      if (y > 0) stack.push(current - width);
+      if (y < height - 1) stack.push(current + width);
+    }
+
+    if (component.length > 0) {
+      components.push(component);
+    }
+  }
+
+  components.sort((a, b) => b.length - a.length);
+  return components;
+}
+
+async function buildSingleColorOverlayFromMask(maskImageData, color = { r: 226, g: 90, b: 40 }, alpha = 115) {
+  const overlayData = new ImageData(maskImageData.width, maskImageData.height);
+  for (let index = 0; index < maskImageData.data.length; index += 4) {
+    if (maskImageData.data[index] <= 0) continue;
+    overlayData.data[index] = color.r;
+    overlayData.data[index + 1] = color.g;
+    overlayData.data[index + 2] = color.b;
+    overlayData.data[index + 3] = alpha;
+  }
+  return imageDataToBitmap(overlayData);
+}
+
+async function buildComponentOverlayFromMask(maskImageData, segments, alpha = 115) {
+  const width = maskImageData.width;
+  const height = maskImageData.height;
+  const maskValues = new Uint8Array(width * height);
+  for (let index = 0; index < maskValues.length; index += 1) {
+    maskValues[index] = maskImageData.data[index * 4] > 0 ? 1 : 0;
+  }
+
+  const components = splitConnectedComponents(maskValues, width, height);
+  const overlayData = new ImageData(width, height);
+
+  components.forEach((component, index) => {
+    const color = hexToRgb(segments[index]?.color || "#e25a28");
+    component.forEach((pixelIndex) => {
+      const offset = pixelIndex * 4;
+      overlayData.data[offset] = color.r;
+      overlayData.data[offset + 1] = color.g;
+      overlayData.data[offset + 2] = color.b;
+      overlayData.data[offset + 3] = alpha;
+    });
+  });
+
+  return imageDataToBitmap(overlayData);
 }
 
 async function buildScaleOverlay(selected) {
@@ -331,19 +428,6 @@ function updateMeasurementHeaders() {
   bboxHeightHeader.textContent = `BBox H (${lengthUnit})`;
 }
 
-function triggerDownload(url, filename) {
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = filename;
-  document.body.append(link);
-  link.click();
-  link.remove();
-}
-
-function triggerCanvasDownload(canvas, filename) {
-  triggerDownload(canvas.toDataURL("image/png"), filename);
-}
-
 function isEditMode() {
   return mode === "brush" || mode === "eraser";
 }
@@ -419,6 +503,7 @@ async function restoreSnapshot(snapshot) {
   maskDirty = false;
   currentStrokePoints = [];
   pendingStrokeSnapshot = null;
+  renderPointList();
   draw();
   renderResults(measurements);
 }
@@ -438,37 +523,19 @@ async function refreshOverlayFromMaskCanvas() {
     overlayBitmap = null;
     return;
   }
-  const preview = document.createElement("canvas");
-  preview.width = naturalWidth;
-  preview.height = naturalHeight;
-  const previewCtx = preview.getContext("2d");
-  const source = maskCtx.getImageData(0, 0, naturalWidth, naturalHeight);
-  const tinted = previewCtx.createImageData(naturalWidth, naturalHeight);
-
-  for (let index = 0; index < source.data.length; index += 4) {
-    const value = source.data[index];
-    if (value > 0) {
-      tinted.data[index] = 226;
-      tinted.data[index + 1] = 90;
-      tinted.data[index + 2] = 40;
-      tinted.data[index + 3] = 115;
-    }
-  }
-
-  previewCtx.putImageData(tinted, 0, 0);
-  overlayBitmap = await loadBitmap(preview.toDataURL("image/png"));
+  const maskImageData = maskCtx.getImageData(0, 0, naturalWidth, naturalHeight);
+  overlayBitmap = await buildSingleColorOverlayFromMask(maskImageData);
 }
 
-async function setMaskFromUrl(maskUrl, nextOverlayUrl) {
+async function setMaskFromUrl(maskUrl) {
   ensureMaskCanvas();
   const bitmap = await loadBitmap(maskUrl);
   maskCtx.clearRect(0, 0, naturalWidth, naturalHeight);
   maskCtx.drawImage(bitmap, 0, 0, naturalWidth, naturalHeight);
-  overlayBitmap = await loadBitmap(nextOverlayUrl);
+  await refreshOverlayFromMaskCanvas();
   maskDirty = false;
   currentStrokePoints = [];
   actionHistory = [];
-  maskDownload.classList.remove("disabled");
 }
 
 function drawMaskStroke(fromPoint, toPoint) {
@@ -539,6 +606,7 @@ fileInput.addEventListener("change", async () => {
   currentStrokePoints = [];
   pendingStrokeSnapshot = null;
   actionHistory = [];
+  hoveredPointIndex = null;
   imageBitmap = await loadBitmap(data.image_data_url);
   prepareSourceImageData();
   ensureMaskCanvas();
@@ -546,6 +614,7 @@ fileInput.addEventListener("change", async () => {
   setScalePickMode(false);
   fitCanvas();
   draw();
+  renderPointList();
   renderResults();
   setStatus("Image ready. Add points, paint the mask directly, or segment an object.");
 });
@@ -559,6 +628,7 @@ brushSize.addEventListener("input", () => {
 });
 pointOpacity.addEventListener("input", () => {
   updateOpacityLabels();
+  renderPointList();
   draw();
 });
 overlayOpacity.addEventListener("input", () => {
@@ -567,7 +637,43 @@ overlayOpacity.addEventListener("input", () => {
 });
 scalePixelInput.addEventListener("input", updatePixelSizeFromCalibration);
 scaleLengthInput.addEventListener("input", updatePixelSizeFromCalibration);
+pixelSizeInput.addEventListener("input", () => renderResults(measurements));
 pixelUnitInput.addEventListener("change", () => renderResults(measurements));
+pointList.addEventListener("mouseover", (event) => {
+  const item = event.target.closest("li[data-point-index]");
+  if (!item) return;
+  const index = Number(item.dataset.pointIndex);
+  if (!Number.isInteger(index) || hoveredPointIndex === index) return;
+  hoveredPointIndex = index;
+  renderPointList();
+  draw();
+});
+pointList.addEventListener("mouseout", (event) => {
+  const item = event.target.closest("li[data-point-index]");
+  if (!item) return;
+  const nextTarget = event.relatedTarget;
+  if (nextTarget && item.contains(nextTarget)) return;
+  if (hoveredPointIndex === null) return;
+  hoveredPointIndex = null;
+  renderPointList();
+  draw();
+});
+pointList.addEventListener("click", (event) => {
+  const button = event.target.closest(".pointDeleteBtn");
+  if (!button) return;
+  const index = Number(button.dataset.pointIndex);
+  if (!Number.isInteger(index)) return;
+  pushHistory(captureSnapshot());
+  points.splice(index, 1);
+  if (hoveredPointIndex === index) {
+    hoveredPointIndex = null;
+  } else if (hoveredPointIndex !== null && hoveredPointIndex > index) {
+    hoveredPointIndex -= 1;
+  }
+  renderPointList();
+  draw();
+  setStatus("Removed point.");
+});
 scalePickBtn.addEventListener("click", () => {
   if (!imageBitmap) {
     setStatus("Open an image first.");
@@ -583,6 +689,7 @@ scalePickBtn.addEventListener("click", () => {
 
 clearBtn.addEventListener("click", () => {
   points = [];
+  hoveredPointIndex = null;
   measurements = [];
   overlayBitmap = null;
   scaleOverlayBitmap = null;
@@ -596,8 +703,8 @@ clearBtn.addEventListener("click", () => {
     maskCtx.fillStyle = "#000000";
     maskCtx.fillRect(0, 0, naturalWidth, naturalHeight);
   }
-  maskDownload.classList.add("disabled");
   draw();
+  renderPointList();
   renderResults();
   setStatus("Cleared points, overlays, and local mask edits.");
 });
@@ -618,11 +725,11 @@ segmentBtn.addEventListener("click", async () => {
     setStatus(data.error || "Segmentation failed.");
     return;
   }
-  await setMaskFromUrl(data.mask_data_url, data.overlay_data_url);
-  maskDownload.classList.remove("disabled");
+  await setMaskFromUrl(data.mask_data_url);
   measurements = [];
   renderResults();
   draw();
+  renderPointList();
   setStatus(`Mask generated. Score ${data.score.toFixed(3)}.`);
 });
 
@@ -651,7 +758,7 @@ calculateBtn.addEventListener("click", async () => {
   }
 
   measurements = data.segments;
-  overlayBitmap = await loadBitmap(data.overlay_data_url);
+  overlayBitmap = await buildComponentOverlayFromMask(maskCtx.getImageData(0, 0, naturalWidth, naturalHeight), measurements);
   maskDirty = false;
   currentStrokePoints = [];
   renderResults(measurements);
@@ -675,13 +782,13 @@ stage.addEventListener("pointerdown", (event) => {
     lastDrawPoint = point;
     currentStrokePoints = [point];
     drawMaskStroke(point, point);
-    maskDownload.classList.remove("disabled");
     draw();
     stage.setPointerCapture(event.pointerId);
     return;
   }
   pushHistory(captureSnapshot());
   points.push({ x: point.x, y: point.y, type: mode });
+  renderPointList();
   draw();
 });
 
@@ -723,12 +830,6 @@ window.addEventListener("keydown", async (event) => {
     event.preventDefault();
     await undoLastAction();
   }
-});
-
-maskDownload.addEventListener("click", (event) => {
-  event.preventDefault();
-  if (!maskCanvas) return;
-  triggerCanvasDownload(maskCanvas, maskDownload.download || "mask.png");
 });
 
 window.addEventListener("resize", () => {

@@ -211,12 +211,10 @@ def image_to_png_data_url(image: np.ndarray) -> str:
     return f"data:image/png;base64,{encoded}"
 
 
-def build_mask_outputs(mask: np.ndarray, color: tuple[int, int, int] = (226, 90, 40)) -> dict:
+def build_mask_outputs(mask: np.ndarray) -> dict:
     mask_255 = mask_to_uint8(mask)
-    overlay = mask_overlay_rgba(mask_255, color=color)
     return {
         "mask_data_url": image_to_png_data_url(mask_255),
-        "overlay_data_url": image_to_png_data_url(overlay),
     }
 
 
@@ -429,14 +427,11 @@ class SamWebHandler(BaseHTTPRequestHandler):
                 }
             )
         image_state["segments"] = segments
-        overlay = colorize_components_overlay(components, colors)
-
         json_response(
             self,
             200,
             {
                 "segments": segments,
-                "overlay_data_url": image_to_png_data_url(overlay),
             },
         )
 

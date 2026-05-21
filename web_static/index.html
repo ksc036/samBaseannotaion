@@ -3,14 +3,14 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>micro-sam point segmentation</title>
+    <title>micro-sam auto segmentation</title>
     <link rel="stylesheet" href="/static/styles.css" />
   </head>
   <body>
     <header>
       <div>
-        <h1>micro-sam point segmentation</h1>
-        <p>Positive/negative point prompts to mask</p>
+        <h1>micro-sam auto segmentation</h1>
+        <p>Automatic mask generation and editing</p>
       </div>
       <label class="fileButton">
         Open image
@@ -47,14 +47,13 @@
         </div>
         <label class="metricLabel" for="pixelSizeInput">Pixel size</label>
         <div class="scaleRow">
-          <input id="pixelSizeInput" type="number" min="0" step="any" placeholder="actual distance / pixel" readonly />
+          <input id="pixelSizeInput" type="number" min="0" step="any" placeholder="actual distance / pixel" />
           <select id="pixelUnitInput" aria-label="Pixel size unit">
             <option value="mm">mm</option>
             <option value="um" selected>um</option>
             <option value="nm">nm</option>
           </select>
         </div>
-        <a id="maskDownload" class="disabled" download="mask.png">Mask Download</a>
         <div id="status">Open a microscopy image to start.</div>
         <div id="pointListWrap">
           <ul id="pointList"></ul>
