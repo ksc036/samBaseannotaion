@@ -1,8 +1,8 @@
 $workspace = $PSScriptRoot
-$envRoot = Join-Path $env:USERPROFILE "miniforge3\envs\micro-sam"
+$envRoot = Join-Path $env:USERPROFILE "miniforge3\envs\sambaseannotation"
 
 if (-not (Test-Path "$envRoot\python.exe")) {
-  Write-Error "Could not find micro-sam environment at $envRoot. Create it with: conda env create -f environment.yml"
+  Write-Error "Could not find sambaseannotation environment at $envRoot. Create it with: conda env create -f environment.yml"
   exit 1
 }
 
