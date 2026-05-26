@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>micro-sam admin review</title>
+    <link rel="stylesheet" href="/static/admin.css" />
+  </head>
+  <body>
+    <header>
+      <div>
+        <h1>micro-sam admin review</h1>
+        <p>Review uploaded masks and approve completed annotations</p>
+      </div>
+      <button id="refreshBtn" type="button">Refresh List</button>
+    </header>
+
+    <main>
+      <aside>
+        <div class="panelHeader">
+          <h2>Pending Samples</h2>
+          <span id="sampleCount">0</span>
+        </div>
+        <ul id="sampleList"></ul>
+      </aside>
+
+      <section class="workspace">
+        <div class="toolbar">
+          <div class="toolSection">
+            <div class="sectionLabel">Edit Tools</div>
+            <div class="controlGroup">
+              <button id="brushBtn" class="active">Brush</button>
+              <button id="eraserBtn">Eraser</button>
+            </div>
+          </div>
+          <div class="toolSection">
+            <label class="metricLabel" for="brushSize">Brush size</label>
+            <input id="brushSize" type="range" min="4" max="64" value="18" />
+            <div id="brushSizeValue">18 px</div>
+          </div>
+          <div class="toolSection">
+            <label class="metricLabel" for="overlayOpacity">Overlay opacity</label>
+            <input id="overlayOpacity" type="range" min="0" max="100" value="100" />
+            <div id="overlayOpacityValue">100%</div>
+          </div>
+          <div class="actionSection">
+            <div class="sectionLabel">Review Actions</div>
+            <div class="actionButtons">
+              <button id="maskPreviewBtn" type="button" class="previewBtn">Mask Preview</button>
+              <button id="deleteBtn" type="button" class="deleteBtn">Delete</button>
+              <button id="approveBtn" type="button" class="approveBtn">Approve</button>
+            </div>
+          </div>
+        </div>
+
+        <div id="status">Select a sample from the left list.</div>
+        <section id="stageWrap">
+          <canvas id="stage"></canvas>
+        </section>
+      </section>
+    </main>
+
+    <script src="/static/admin.js"></script>
+  </body>
+</html>

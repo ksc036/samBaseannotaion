@@ -7,9 +7,10 @@ import uuid
 from datetime import datetime
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from io import BytesIO
+import shutil
 from pathlib import Path
 import re
-from urllib.parse import urlparse
+from urllib.parse import parse_qs, urlparse
 
 import imageio.v3 as iio
 import numpy as np
@@ -20,6 +21,8 @@ from scipy.spatial import ConvexHull
 ROOT = Path(__file__).resolve().parent
 STATIC_DIR = ROOT / "web_static"
 UPLOAD_DIR = ROOT / "web_uploads"
+APPROVED_DIR = ROOT / "annotation_complete"
+DELETED_DIR = ROOT / "deleted_annotations"
 OUTPUT_DIR = ROOT / "web_outputs"
 DEFAULT_MODEL = "vit_b_lm"
 DEFAULT_DEVICE = "cpu"
@@ -35,6 +38,8 @@ SEGMENT_COLORS = [
 ]
 
 UPLOAD_DIR.mkdir(exist_ok=True)
+APPROVED_DIR.mkdir(exist_ok=True)
+DELETED_DIR.mkdir(exist_ok=True)
 OUTPUT_DIR.mkdir(exist_ok=True)
 
 STATE = {
@@ -218,6 +223,61 @@ def build_mask_outputs(mask: np.ndarray) -> dict:
     }
 
 
+def list_sample_dirs(base_dir: Path) -> list[Path]:
+    if not base_dir.exists():
+        return []
+    sample_dirs = []
+    for path in sorted(base_dir.iterdir(), reverse=True):
+        if not path.is_dir():
+            continue
+        if (path / "Image").is_dir() and (path / "mask").is_dir():
+            sample_dirs.append(path)
+    return sample_dirs
+
+
+def first_file_in_dir(path: Path) -> Path | None:
+    if not path.exists():
+        return None
+    files = [entry for entry in sorted(path.iterdir()) if entry.is_file()]
+    return files[0] if files else None
+
+
+def sample_record(sample_dir: Path) -> dict:
+    image_path = first_file_in_dir(sample_dir / "Image")
+    mask_path = first_file_in_dir(sample_dir / "mask")
+    if image_path is None:
+        raise ValueError(f"Sample at {sample_dir} does not contain an image.")
+    return {
+        "sample_id": sample_dir.name,
+        "folder_name": sample_dir.name,
+        "sample_dir": sample_dir,
+        "image_path": image_path,
+        "mask_path": mask_path or (sample_dir / "mask" / f"{sample_dir.name}.png"),
+    }
+
+
+def load_sample_payload(sample_dir: Path) -> dict:
+    record = sample_record(sample_dir)
+    image = read_image(record["image_path"])
+    height, width = image.shape[:2]
+    mask_path = record["mask_path"]
+    if mask_path.exists():
+        mask_data = iio.imread(mask_path)
+        if getattr(mask_data, "ndim", 2) == 3:
+            mask_data = mask_data[..., 0]
+        mask = mask_data > 0
+    else:
+        mask = np.zeros((height, width), dtype=bool)
+    return {
+        "sample_id": record["sample_id"],
+        "folder_name": record["folder_name"],
+        "width": int(width),
+        "height": int(height),
+        "image_data_url": image_to_png_data_url(image),
+        "mask_data_url": image_to_png_data_url(mask_to_uint8(mask)),
+    }
+
+
 def normalize_points(points: list[dict]) -> tuple[np.ndarray, np.ndarray]:
     coords = []
     labels = []
@@ -281,10 +341,16 @@ class SamWebHandler(BaseHTTPRequestHandler):
         path = parsed.path
         if path == "/":
             self.serve_file(STATIC_DIR / "index.html", "text/html")
+        elif path == "/admin":
+            self.serve_file(STATIC_DIR / "admin.html", "text/html")
         elif path.startswith("/static/"):
             self.serve_file(STATIC_DIR / path.removeprefix("/static/"))
         elif path.startswith("/outputs/"):
             self.serve_file(OUTPUT_DIR / path.removeprefix("/outputs/"))
+        elif path == "/api/admin/samples":
+            self.handle_admin_samples()
+        elif path == "/api/admin/sample":
+            self.handle_admin_sample(parsed.query)
         else:
             json_response(self, 404, {"error": "Not found"})
 
@@ -297,6 +363,10 @@ class SamWebHandler(BaseHTTPRequestHandler):
                 self.handle_segment()
             elif parsed.path == "/api/calculate":
                 self.handle_calculate()
+            elif parsed.path == "/api/admin/approve":
+                self.handle_admin_approve()
+            elif parsed.path == "/api/admin/delete":
+                self.handle_admin_delete()
             else:
                 json_response(self, 404, {"error": "Not found"})
         except Exception as exc:
@@ -432,6 +502,90 @@ class SamWebHandler(BaseHTTPRequestHandler):
             200,
             {
                 "segments": segments,
+            },
+        )
+
+    def handle_admin_samples(self):
+        samples = []
+        for sample_dir in list_sample_dirs(UPLOAD_DIR):
+            record = sample_record(sample_dir)
+            image = read_image(record["image_path"])
+            height, width = image.shape[:2]
+            samples.append(
+                {
+                    "sample_id": record["sample_id"],
+                    "folder_name": record["folder_name"],
+                    "width": int(width),
+                    "height": int(height),
+                }
+            )
+        json_response(self, 200, {"samples": samples})
+
+    def handle_admin_sample(self, query: str):
+        params = parse_qs(query)
+        sample_id = params.get("sample_id", [""])[0]
+        if not sample_id:
+            raise ValueError("sample_id is required.")
+        sample_dir = UPLOAD_DIR / sample_id
+        if not sample_dir.exists():
+            raise ValueError("Unknown sample_id.")
+        json_response(self, 200, load_sample_payload(sample_dir))
+
+    def handle_admin_approve(self):
+        payload = self.read_json()
+        sample_id = payload.get("sample_id", "")
+        mask_data_url = payload.get("mask_data_url", "")
+        if not sample_id:
+            raise ValueError("sample_id is required.")
+        if not mask_data_url:
+            raise ValueError("mask_data_url is required.")
+
+        sample_dir = UPLOAD_DIR / sample_id
+        if not sample_dir.exists():
+            raise ValueError("Unknown sample_id.")
+
+        record = sample_record(sample_dir)
+        mask = decode_mask_data_url(mask_data_url)
+        record["mask_path"].parent.mkdir(parents=True, exist_ok=True)
+        iio.imwrite(record["mask_path"], mask_to_uint8(mask))
+
+        destination = APPROVED_DIR / sample_dir.name
+        if destination.exists():
+            shutil.rmtree(destination)
+        shutil.move(str(sample_dir), str(destination))
+
+        json_response(
+            self,
+            200,
+            {
+                "sample_id": sample_id,
+                "status": "approved",
+                "destination": str(destination),
+            },
+        )
+
+    def handle_admin_delete(self):
+        payload = self.read_json()
+        sample_id = payload.get("sample_id", "")
+        if not sample_id:
+            raise ValueError("sample_id is required.")
+
+        sample_dir = UPLOAD_DIR / sample_id
+        if not sample_dir.exists():
+            raise ValueError("Unknown sample_id.")
+
+        destination = DELETED_DIR / sample_dir.name
+        if destination.exists():
+            shutil.rmtree(destination)
+        shutil.move(str(sample_dir), str(destination))
+
+        json_response(
+            self,
+            200,
+            {
+                "sample_id": sample_id,
+                "status": "deleted",
+                "destination": str(destination),
             },
         )
 
