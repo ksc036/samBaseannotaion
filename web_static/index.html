@@ -12,10 +12,13 @@
         <h1>micro-sam auto segmentation</h1>
         <p>Automatic mask generation and editing</p>
       </div>
-      <label class="fileButton">
-        Open image
-        <input id="fileInput" type="file" accept=".png,.jpg,.jpeg,.tif,.tiff" />
-      </label>
+      <div class="headerActions">
+        <label class="fileButton">
+          Open image
+          <input id="fileInput" type="file" accept=".png,.jpg,.jpeg,.tif,.tiff" />
+        </label>
+        <button id="aiInferenceBtn" class="secondaryButton betaButton" type="button" disabled>AI Inference Beta</button>
+      </div>
     </header>
 
     <main>

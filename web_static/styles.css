@@ -23,6 +23,12 @@ header {
   padding: 14px 18px;
 }
 
+.headerActions {
+  align-items: center;
+  display: flex;
+  gap: 10px;
+}
+
 h1 {
   font-size: 18px;
   margin: 0 0 4px;
@@ -101,6 +107,10 @@ input:disabled {
   cursor: default;
   opacity: 0.45;
   pointer-events: none;
+}
+
+.betaButton {
+  min-width: 150px;
 }
 
 input[type="file"] {
