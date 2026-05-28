@@ -23,6 +23,7 @@ const overlayOpacity = document.getElementById("overlayOpacity");
 const overlayOpacityValue = document.getElementById("overlayOpacityValue");
 const resultsBody = document.getElementById("resultsBody");
 const resultsPanel = document.getElementById("resultsPanel");
+const avgFeretHeader = document.getElementById("avgFeretHeader");
 const areaHeader = document.getElementById("areaHeader");
 const feretMaxHeader = document.getElementById("feretMaxHeader");
 const feretMinHeader = document.getElementById("feretMinHeader");
@@ -155,7 +156,7 @@ function renderResults(rows = []) {
   if (rows.length === 0) {
     const row = document.createElement("tr");
     const cell = document.createElement("td");
-    cell.colSpan = 8;
+    cell.colSpan = 9;
     cell.className = "emptyCell";
     cell.textContent = "No calculation yet.";
     row.append(cell);
@@ -175,6 +176,12 @@ function renderResults(rows = []) {
     const segmentCell = document.createElement("td");
     segmentCell.textContent = `#${index + 1}`;
 
+    const avgFeretCell = document.createElement("td");
+    avgFeretCell.textContent = formatLength(
+      (Number(segment.feret_max_pixels || 0) + Number(segment.feret_min_pixels || 0)) / 2,
+      scale,
+    );
+
     const areaCell = document.createElement("td");
     areaCell.textContent = formatArea(segment.area_pixels, scale);
 
@@ -193,7 +200,7 @@ function renderResults(rows = []) {
     const bboxHeightCell = document.createElement("td");
     bboxHeightCell.textContent = formatLength(segment.bbox_height_pixels, scale);
 
-    row.append(colorCell, segmentCell, areaCell, feretMaxCell, feretMinCell, eqCell, bboxWidthCell, bboxHeightCell);
+    row.append(colorCell, segmentCell, avgFeretCell, areaCell, feretMaxCell, feretMinCell, eqCell, bboxWidthCell, bboxHeightCell);
     resultsBody.append(row);
   });
 }
@@ -202,7 +209,7 @@ function renderLoadingResults() {
   resultsBody.innerHTML = "";
   const row = document.createElement("tr");
   const cell = document.createElement("td");
-  cell.colSpan = 8;
+  cell.colSpan = 9;
   cell.className = "emptyCell";
   cell.textContent = "Calculating...";
   row.append(cell);
@@ -420,6 +427,7 @@ function updateMeasurementHeaders() {
   const scale = getPixelScale();
   const lengthUnit = scale ? scale.unit : "px";
   const areaUnit = scale ? `${scale.unit}²` : "px²";
+  avgFeretHeader.textContent = `Avg Feret (${lengthUnit})`;
   areaHeader.textContent = `Area (${areaUnit})`;
   feretMaxHeader.textContent = `Feret max (${lengthUnit})`;
   feretMinHeader.textContent = `Min Feret (${lengthUnit})`;
