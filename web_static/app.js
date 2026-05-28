@@ -23,6 +23,7 @@ const overlayOpacity = document.getElementById("overlayOpacity");
 const overlayOpacityValue = document.getElementById("overlayOpacityValue");
 const resultsBody = document.getElementById("resultsBody");
 const resultsPanel = document.getElementById("resultsPanel");
+const stageWrap = document.getElementById("stageWrap");
 const avgFeretHeader = document.getElementById("avgFeretHeader");
 const areaHeader = document.getElementById("areaHeader");
 const feretMaxHeader = document.getElementById("feretMaxHeader");
@@ -588,8 +589,7 @@ async function loadBitmap(url) {
   return createImageBitmap(blob);
 }
 
-fileInput.addEventListener("change", async () => {
-  const file = fileInput.files[0];
+async function handleImageFile(file) {
   if (!file) return;
   setStatus("Uploading image and preparing model. CPU mode can take a while.");
   const response = await fetch("/api/images", {
@@ -625,6 +625,11 @@ fileInput.addEventListener("change", async () => {
   renderPointList();
   renderResults();
   setStatus("Image ready. Add points, paint the mask directly, or segment an object.");
+}
+
+fileInput.addEventListener("change", async () => {
+  const file = fileInput.files[0];
+  await handleImageFile(file);
 });
 
 positiveBtn.addEventListener("click", () => setMode("positive"));
@@ -843,6 +848,43 @@ window.addEventListener("keydown", async (event) => {
 window.addEventListener("resize", () => {
   fitCanvas();
   draw();
+});
+
+["dragenter", "dragover"].forEach((eventName) => {
+  window.addEventListener(eventName, (event) => {
+    event.preventDefault();
+  });
+});
+
+["dragleave", "drop"].forEach((eventName) => {
+  window.addEventListener(eventName, (event) => {
+    event.preventDefault();
+  });
+});
+
+stageWrap.addEventListener("dragenter", (event) => {
+  if (!event.dataTransfer?.types?.includes("Files")) return;
+  stageWrap.classList.add("dragOver");
+});
+
+stageWrap.addEventListener("dragover", (event) => {
+  if (!event.dataTransfer?.types?.includes("Files")) return;
+  event.dataTransfer.dropEffect = "copy";
+  stageWrap.classList.add("dragOver");
+});
+
+stageWrap.addEventListener("dragleave", (event) => {
+  if (!stageWrap.contains(event.relatedTarget)) {
+    stageWrap.classList.remove("dragOver");
+  }
+});
+
+stageWrap.addEventListener("drop", async (event) => {
+  stageWrap.classList.remove("dragOver");
+  const file = event.dataTransfer?.files?.[0];
+  if (!file) return;
+  fileInput.value = "";
+  await handleImageFile(file);
 });
 
 updateOpacityLabels();

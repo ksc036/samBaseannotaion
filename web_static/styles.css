@@ -285,10 +285,16 @@ button:not(.active).editTool {
 
 #stageWrap {
   align-items: center;
+  background:
+    linear-gradient(135deg, rgba(38, 51, 61, 0.06), transparent 40%),
+    radial-gradient(circle at top right, rgba(33, 94, 168, 0.12), transparent 36%),
+    #f1f4f6;
+  border-left: 1px solid #d6dde2;
   display: flex;
   justify-content: center;
   overflow: auto;
   padding: 18px;
+  position: relative;
 }
 
 #stage {
@@ -299,4 +305,31 @@ button:not(.active).editTool {
 
 #stage.crosshairMode {
   cursor: crosshair;
+}
+
+#dropHint {
+  align-items: center;
+  background: rgba(255, 255, 255, 0.92);
+  border: 2px dashed #8ea7bc;
+  border-radius: 14px;
+  color: #4d6272;
+  display: none;
+  font-size: 18px;
+  font-weight: 700;
+  inset: 24px;
+  justify-content: center;
+  pointer-events: none;
+  position: absolute;
+  z-index: 2;
+}
+
+#stageWrap.dragOver #dropHint {
+  display: flex;
+}
+
+#stageWrap.dragOver {
+  background:
+    linear-gradient(135deg, rgba(38, 51, 61, 0.1), transparent 40%),
+    radial-gradient(circle at top right, rgba(33, 94, 168, 0.18), transparent 36%),
+    #eaf2f9;
 }
