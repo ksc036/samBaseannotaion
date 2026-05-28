@@ -142,6 +142,10 @@ button:not(.active).negative {
   background: #6f7b84;
 }
 
+#removePointBtn.active {
+  background: #b24a2b;
+}
+
 .metricLabel {
   color: #44515b;
   font-size: 12px;

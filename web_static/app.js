@@ -5,6 +5,7 @@ const statusEl = document.getElementById("status");
 const pointList = document.getElementById("pointList");
 const positiveBtn = document.getElementById("positiveBtn");
 const negativeBtn = document.getElementById("negativeBtn");
+const removePointBtn = document.getElementById("removePointBtn");
 const brushBtn = document.getElementById("brushBtn");
 const eraserBtn = document.getElementById("eraserBtn");
 const segmentBtn = document.getElementById("segmentBtn");
@@ -71,15 +72,22 @@ function setControlsCollapsed(collapsed) {
 function setMode(nextMode) {
   mode = nextMode;
   setScalePickMode(false);
+  if (mode !== "point-remove") {
+    hoveredPointIndex = null;
+    renderPointList();
+  }
   positiveBtn.classList.toggle("active", mode === "positive");
   negativeBtn.classList.toggle("active", mode === "negative");
+  removePointBtn.classList.toggle("active", mode === "point-remove");
   brushBtn.classList.toggle("active", mode === "brush");
   eraserBtn.classList.toggle("active", mode === "eraser");
   updateStageCursor();
+  draw();
 }
 
 function updateStageCursor() {
-  const showCrosshair = isScalePickMode || mode === "positive" || mode === "negative" || mode === "brush" || mode === "eraser";
+  const showCrosshair =
+    isScalePickMode || mode === "positive" || mode === "negative" || mode === "point-remove" || mode === "brush" || mode === "eraser";
   stage.classList.toggle("crosshairMode", showCrosshair);
 }
 
@@ -458,6 +466,44 @@ function clientToImageCoords(event) {
   };
 }
 
+function findNearestPointIndex(targetPoint, thresholdScreenPx = 16) {
+  if (points.length === 0 || !naturalWidth || !naturalHeight || !stage.width || !stage.height) {
+    return null;
+  }
+  const thresholdImageX = (thresholdScreenPx / stage.width) * naturalWidth;
+  const thresholdImageY = (thresholdScreenPx / stage.height) * naturalHeight;
+  const thresholdSq = thresholdImageX * thresholdImageX + thresholdImageY * thresholdImageY;
+  let nearestIndex = null;
+  let nearestDistanceSq = thresholdSq;
+
+  points.forEach((point, index) => {
+    const dx = point.x - targetPoint.x;
+    const dy = point.y - targetPoint.y;
+    const distanceSq = dx * dx + dy * dy;
+    if (distanceSq <= nearestDistanceSq) {
+      nearestDistanceSq = distanceSq;
+      nearestIndex = index;
+    }
+  });
+
+  return nearestIndex;
+}
+
+function setHoveredPointIndex(index) {
+  if (hoveredPointIndex === index) return;
+  hoveredPointIndex = index;
+  renderPointList();
+  draw();
+}
+
+function updateHoveredPointFromImagePoint(point) {
+  if (mode !== "point-remove") {
+    setHoveredPointIndex(null);
+    return;
+  }
+  setHoveredPointIndex(findNearestPointIndex(point));
+}
+
 function ensureMaskCanvas() {
   if (maskCanvas) return;
   maskCanvas = document.createElement("canvas");
@@ -643,6 +689,14 @@ fileInput.addEventListener("change", async () => {
 
 positiveBtn.addEventListener("click", () => setMode("positive"));
 negativeBtn.addEventListener("click", () => setMode("negative"));
+removePointBtn.addEventListener("click", () => {
+  setMode("point-remove");
+  if (points.length === 0) {
+    setStatus("Remove Point mode is on. Add points first, then click one to remove it.");
+    return;
+  }
+  setStatus("Remove Point mode is on. Move near a point to highlight it, then click to delete it.");
+});
 brushBtn.addEventListener("click", () => setMode("brush"));
 eraserBtn.addEventListener("click", () => setMode("eraser"));
 brushSize.addEventListener("input", () => {
@@ -811,6 +865,18 @@ stage.addEventListener("pointerdown", (event) => {
     stage.setPointerCapture(event.pointerId);
     return;
   }
+  if (mode === "point-remove") {
+    const index = findNearestPointIndex(point);
+    if (index === null) {
+      setStatus("Move closer to a point, then click to remove it.");
+      return;
+    }
+    pushHistory(captureSnapshot());
+    points.splice(index, 1);
+    setHoveredPointIndex(null);
+    setStatus("Removed point.");
+    return;
+  }
   pushHistory(captureSnapshot());
   points.push({ x: point.x, y: point.y, type: mode });
   renderPointList();
@@ -818,6 +884,10 @@ stage.addEventListener("pointerdown", (event) => {
 });
 
 stage.addEventListener("pointermove", (event) => {
+  if (mode === "point-remove" && !isDrawing) {
+    updateHoveredPointFromImagePoint(clientToImageCoords(event));
+    return;
+  }
   if (!isDrawing || !isEditMode()) return;
   const point = clientToImageCoords(event);
   const previous = lastDrawPoint || point;
@@ -846,6 +916,9 @@ stage.addEventListener("pointerup", async (event) => {
 });
 
 stage.addEventListener("pointerleave", () => {
+  if (mode === "point-remove") {
+    setHoveredPointIndex(null);
+  }
   if (!isDrawing) return;
   lastDrawPoint = null;
 });
