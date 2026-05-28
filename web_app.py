@@ -287,6 +287,30 @@ def normalize_points(points: list[dict]) -> tuple[np.ndarray, np.ndarray]:
     return np.asarray(coords, dtype=np.float32), np.asarray(labels, dtype=np.int32)
 
 
+def normalize_patch_rect(patch: dict | None, image_shape: tuple[int, ...]) -> dict | None:
+    if not patch:
+        return None
+    height, width = image_shape[:2]
+    x = int(round(float(patch.get("x", 0))))
+    y = int(round(float(patch.get("y", 0))))
+    patch_width = int(round(float(patch.get("width", 0))))
+    patch_height = int(round(float(patch.get("height", 0))))
+    if patch_width <= 0 or patch_height <= 0:
+        raise ValueError("Patch width and height must be greater than zero.")
+    x = max(0, min(width - 1, x))
+    y = max(0, min(height - 1, y))
+    x_end = min(width, x + patch_width)
+    y_end = min(height, y + patch_height)
+    if x_end <= x or y_end <= y:
+        raise ValueError("Patch does not overlap the image.")
+    return {
+        "x": int(x),
+        "y": int(y),
+        "width": int(x_end - x),
+        "height": int(y_end - y),
+    }
+
+
 def ensure_rgb(image: np.ndarray) -> np.ndarray:
     if image.ndim == 2:
         return np.repeat(image[..., None], 3, axis=-1)
@@ -316,12 +340,12 @@ def get_predictor():
     return STATE["predictor"]
 
 
-def set_active_image(image_id: str):
-    if STATE["active_image_id"] == image_id:
+def set_active_image_data(active_key, image_array: np.ndarray):
+    if STATE["active_image_id"] == active_key:
         return
     predictor = get_predictor()
-    predictor.set_image(STATE["images"][image_id]["array"])
-    STATE["active_image_id"] = image_id
+    predictor.set_image(image_array)
+    STATE["active_image_id"] = active_key
 
 
 def json_response(handler: BaseHTTPRequestHandler, status: int, payload: dict):
@@ -443,12 +467,19 @@ class SamWebHandler(BaseHTTPRequestHandler):
         if image_id not in STATE["images"]:
             raise ValueError("Unknown image_id.")
 
-        set_active_image(image_id)
+        image_state = STATE["images"][image_id]
+        image_array = image_state["array"]
+        patch = normalize_patch_rect(payload.get("patch"), image_array.shape)
+        if patch:
+            patch_image = image_array[patch["y"] : patch["y"] + patch["height"], patch["x"] : patch["x"] + patch["width"]]
+            active_key = (image_id, patch["x"], patch["y"], patch["width"], patch["height"])
+            set_active_image_data(active_key, patch_image)
+        else:
+            set_active_image_data(image_id, image_array)
         coords, labels = normalize_points(points)
         predictor = get_predictor()
         masks, scores, _ = predictor.predict(point_coords=coords, point_labels=labels, multimask_output=True)
         mask = masks[int(np.argmax(scores))]
-        image_state = STATE["images"][image_id]
         image_state["segments"] = []
         image_state["last_mask"] = mask.astype(bool)
         outputs = build_mask_outputs(image_state["last_mask"])
@@ -459,6 +490,7 @@ class SamWebHandler(BaseHTTPRequestHandler):
             {
                 **outputs,
                 "score": float(np.max(scores)),
+                "patch": patch,
             },
         )
 

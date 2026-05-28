@@ -26,6 +26,14 @@
             <button id="positiveBtn" class="active positive">Positive</button>
             <button id="negativeBtn" class="negative">Negative</button>
           </div>
+          <div class="controlGroup">
+            <button id="patchBtn" class="secondaryButton" type="button">Draw Patch</button>
+            <button id="deletePatchBtn" class="secondaryButton" type="button">Delete Patch</button>
+          </div>
+          <div id="patchSummary">Whole image mode</div>
+          <div id="patchListWrap">
+            <ul id="patchList"></ul>
+          </div>
           <button id="removePointBtn" class="secondaryButton" type="button">Remove Point</button>
           <button id="segmentBtn">Segment Object</button>
           <button id="clearBtn">Clear</button>
@@ -65,10 +73,12 @@
         <button id="calculateBtn">Calculate</button>
         <div id="resultsPanel">
           <h2>Segment Measurements</h2>
+          <button id="exportResultsBtn" class="secondaryButton" type="button">Export Selected XLSX</button>
           <div id="resultsTableWrap">
             <table id="resultsTable">
               <thead>
                 <tr>
+                  <th>Select</th>
                   <th>Color</th>
                   <th>Segment</th>
                   <th id="avgFeretHeader">Avg Feret (px)</th>
@@ -82,7 +92,7 @@
               </thead>
               <tbody id="resultsBody">
                 <tr>
-                  <td colspan="9" class="emptyCell">No calculation yet.</td>
+                  <td colspan="10" class="emptyCell">No calculation yet.</td>
                 </tr>
               </tbody>
             </table>
@@ -96,6 +106,7 @@
       </section>
     </main>
 
+    <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
     <script src="/static/app.js"></script>
   </body>
 </html>

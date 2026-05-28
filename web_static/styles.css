@@ -201,6 +201,55 @@ button:not(.active).editTool {
   padding: 10px;
 }
 
+#patchSummary {
+  background: #f5f7f9;
+  border-radius: 6px;
+  color: #42515c;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.4;
+  padding: 8px 10px;
+}
+
+#patchListWrap {
+  border: 1px solid #d6dde2;
+  border-radius: 8px;
+  max-height: 132px;
+  min-height: 52px;
+  overflow-y: auto;
+}
+
+#patchList {
+  list-style: none;
+  margin: 0;
+  padding: 6px;
+}
+
+#patchList li {
+  align-items: center;
+  border-radius: 6px;
+  color: #43515c;
+  cursor: pointer;
+  display: flex;
+  font-size: 12px;
+  font-weight: 700;
+  justify-content: space-between;
+  line-height: 1.35;
+  padding: 8px;
+}
+
+#patchList li.active {
+  background: #e8f0fb;
+  color: #184f92;
+}
+
+.patchMeta {
+  color: #667580;
+  font-size: 11px;
+  font-weight: 600;
+  margin-left: 10px;
+}
+
 #pointListWrap {
   border-top: 1px solid #d6dde2;
   max-height: 180px;
@@ -258,6 +307,23 @@ button:not(.active).editTool {
 #resultsPanel h2 {
   font-size: 13px;
   margin: 0 0 8px;
+}
+
+#exportResultsBtn {
+  margin-bottom: 8px;
+  width: 100%;
+}
+
+.resultSelectCell {
+  text-align: center !important;
+  width: 34px;
+}
+
+.resultSelect {
+  accent-color: #215ea8;
+  cursor: pointer;
+  height: 16px;
+  width: 16px;
 }
 
 #resultsTableWrap {

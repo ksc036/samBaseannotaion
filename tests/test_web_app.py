@@ -13,6 +13,7 @@ from web_app import (
     mask_overlay_rgba,
     mask_to_uint8,
     normalize_points,
+    normalize_patch_rect,
     outline_mask,
     split_connected_components,
 )
@@ -54,6 +55,13 @@ class WebAppTests(unittest.TestCase):
 
         np.testing.assert_array_equal(coords, np.array([[10.5, 20.25], [15.0, 25.0]], dtype=np.float32))
         np.testing.assert_array_equal(labels, np.array([1, 0], dtype=np.int32))
+
+    def test_normalize_patch_rect_clips_patch_to_image_bounds(self):
+        patch = {"x": 8, "y": 7, "width": 10, "height": 10}
+
+        normalized = normalize_patch_rect(patch, (12, 14, 3))
+
+        self.assertEqual(normalized, {"x": 8, "y": 7, "width": 6, "height": 5})
 
     def test_ensure_rgb_repeats_grayscale_images_to_three_channels(self):
         image = np.array([[0, 10], [20, 30]], dtype=np.uint8)
