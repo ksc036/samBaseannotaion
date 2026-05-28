@@ -10,6 +10,8 @@ const eraserBtn = document.getElementById("eraserBtn");
 const segmentBtn = document.getElementById("segmentBtn");
 const calculateBtn = document.getElementById("calculateBtn");
 const clearBtn = document.getElementById("clearBtn");
+const controlsToggleBtn = document.getElementById("controlsToggleBtn");
+const controlsPanel = document.getElementById("controlsPanel");
 const scalePixelInput = document.getElementById("scalePixelInput");
 const scalePickBtn = document.getElementById("scalePickBtn");
 const scaleLengthInput = document.getElementById("scaleLengthInput");
@@ -54,9 +56,16 @@ let currentStrokePoints = [];
 let pendingStrokeSnapshot = null;
 let actionHistory = [];
 let hoveredPointIndex = null;
+let controlsCollapsed = false;
 
 function setStatus(text) {
   statusEl.textContent = text;
+}
+
+function setControlsCollapsed(collapsed) {
+  controlsCollapsed = collapsed;
+  controlsPanel.classList.toggle("collapsed", collapsed);
+  controlsToggleBtn.textContent = collapsed ? "Show Controls" : "Hide Controls";
 }
 
 function setMode(nextMode) {
@@ -644,6 +653,9 @@ pointOpacity.addEventListener("input", () => {
   renderPointList();
   draw();
 });
+controlsToggleBtn.addEventListener("click", () => {
+  setControlsCollapsed(!controlsCollapsed);
+});
 overlayOpacity.addEventListener("input", () => {
   updateOpacityLabels();
   draw();
@@ -888,3 +900,4 @@ stageWrap.addEventListener("drop", async (event) => {
 });
 
 updateOpacityLabels();
+setControlsCollapsed(false);

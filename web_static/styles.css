@@ -50,6 +50,16 @@ aside {
   padding: 14px;
 }
 
+#controlsPanel {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+#controlsPanel.collapsed {
+  display: none;
+}
+
 button,
 .fileButton,
 a,
