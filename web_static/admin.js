@@ -170,6 +170,14 @@ async function fetchSamples() {
     overlayBitmap = null;
     draw();
   }
+  if (!selectedSampleId && samples.length === 0) {
+    imageBitmap = null;
+    maskCanvas = null;
+    maskCtx = null;
+    overlayBitmap = null;
+    isMaskPreviewActive = false;
+    draw();
+  }
   renderList();
   setStatus(samples.length > 0 ? "Select a sample to review." : "No pending samples found.");
 }

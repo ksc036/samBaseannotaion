@@ -13,6 +13,7 @@ import re
 from urllib.parse import parse_qs, urlparse
 
 import imageio.v3 as iio
+import cv2
 import numpy as np
 from scipy import ndimage as ndi
 from scipy.spatial import ConvexHull
@@ -101,6 +102,24 @@ def boundary_points(mask: np.ndarray) -> np.ndarray:
     return coords[:, ::-1].astype(np.float32)
 
 
+def contour_points_cv2(mask: np.ndarray) -> np.ndarray:
+    binary = (mask > 0).astype(np.uint8)
+    if not np.any(binary):
+        return np.empty((0, 2), dtype=np.float32)
+
+    contours, _ = cv2.findContours(
+        binary,
+        cv2.RETR_EXTERNAL,
+        cv2.CHAIN_APPROX_NONE,
+    )
+
+    if not contours:
+        return np.empty((0, 2), dtype=np.float32)
+
+    largest = max(contours, key=cv2.contourArea)
+    return largest[:, 0, :].astype(np.float32)
+
+
 def convex_hull_points(points: np.ndarray) -> np.ndarray:
     if len(points) <= 2:
         return points.astype(np.float32)
@@ -120,7 +139,8 @@ def feret_diameters(points: np.ndarray) -> tuple[float, float]:
     diffs = points[:, None, :] - points[None, :, :]
     feret_max = float(np.sqrt(np.max(np.sum(diffs * diffs, axis=-1))))
 
-    hull = convex_hull_points(points)
+    # hull = convex_hull_points(points)  # 이전 convex hull 방식: 실제 오목한 경계를 고무줄처럼 감싸버림
+    hull = points.astype(np.float32)  # 현재 방식: 실제 object contour point 그대로 사용
     if len(hull) <= 1:
         return feret_max, 0.0
     if len(hull) == 2:
@@ -165,7 +185,8 @@ def calculate_mask_metrics(mask: np.ndarray) -> dict:
     bbox_width = float(x_max - x_min + 1)
     bbox_height = float(y_max - y_min + 1)
     perimeter = float(np.count_nonzero(outline_mask(mask_to_uint8(binary))))
-    feret_max, feret_min = feret_diameters(boundary_points(binary))
+    # feret_max, feret_min = feret_diameters(boundary_points(binary))  # 이전 outline 기반 방식
+    feret_max, feret_min = feret_diameters(contour_points_cv2(binary))
     equivalent_diameter = float(np.sqrt((4.0 * area) / np.pi))
 
     return {
@@ -540,17 +561,20 @@ class SamWebHandler(BaseHTTPRequestHandler):
     def handle_admin_samples(self):
         samples = []
         for sample_dir in list_sample_dirs(UPLOAD_DIR):
-            record = sample_record(sample_dir)
-            image = read_image(record["image_path"])
-            height, width = image.shape[:2]
-            samples.append(
-                {
-                    "sample_id": record["sample_id"],
-                    "folder_name": record["folder_name"],
-                    "width": int(width),
-                    "height": int(height),
-                }
-            )
+            try:
+                record = sample_record(sample_dir)
+                image = read_image(record["image_path"])
+                height, width = image.shape[:2]
+                samples.append(
+                    {
+                        "sample_id": record["sample_id"],
+                        "folder_name": record["folder_name"],
+                        "width": int(width),
+                        "height": int(height),
+                    }
+                )
+            except Exception:
+                continue
         json_response(self, 200, {"samples": samples})
 
     def handle_admin_sample(self, query: str):
