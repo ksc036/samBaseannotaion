@@ -3,6 +3,7 @@ from __future__ import annotations
 import base64
 import json
 import mimetypes
+import os
 import uuid
 from datetime import datetime
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -647,8 +648,8 @@ class SamWebHandler(BaseHTTPRequestHandler):
 
 
 def main():
-    host = "0.0.0.0"
-    port = 8765
+    host = os.getenv("APP_HOST", "0.0.0.0")
+    port = int(os.getenv("APP_PORT", "8765"))
     print(f"micro-sam web UI: http://{host}:{port}")
     print("Model loads on first image upload. On CPU this can take a while.")
     ThreadingHTTPServer((host, port), SamWebHandler).serve_forever()
