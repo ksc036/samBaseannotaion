@@ -25,11 +25,7 @@ micro-sam 기반 point prompt segmentation 웹 프로토타입입니다.
 
 macOS / Linux / Windows 모두 `runtime.env`의 공통 설정을 사용합니다.
 
-먼저 `conda` 또는 Miniforge가 필요합니다.
-
-- Miniforge: https://conda-forge.org/download/
-
-그다음 저장소 폴더에서 설치 스크립트를 실행합니다.
+설치 스크립트는 `conda`가 없으면 Miniforge를 자동으로 설치한 뒤 환경 생성까지 이어집니다.
 
 macOS / Linux:
 
@@ -58,6 +54,7 @@ conda activate sambaseannotation
 ```
 
 이미 `micro_sam`, `imageio`, `numpy`, `scipy`가 들어 있는 conda 환경이 있다면 그 환경을 사용해도 됩니다.
+자동 설치 스크립트는 기본적으로 macOS / Linux는 `~/miniforge3`, Windows는 `%USERPROFILE%\miniforge3`를 사용합니다.
 
 ## 실행
 

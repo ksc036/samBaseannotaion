@@ -22,14 +22,54 @@ function Get-Settings {
 
 $settings = Get-Settings -Path $settingsPath
 $envName = if ($settings.ContainsKey("APP_ENV_NAME")) { $settings["APP_ENV_NAME"] } else { "sambaseannotation" }
+$installRoot = Join-Path $env:USERPROFILE "miniforge3"
+
+function Install-Miniforge {
+  param([string]$DestinationRoot)
+
+  $architecture = [System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture.ToString().ToLowerInvariant()
+  switch ($architecture) {
+    "x64" { $installerName = "Miniforge3-Windows-x86_64.exe" }
+    "arm64" { $installerName = "Miniforge3-Windows-arm64.exe" }
+    default {
+      Write-Error "Unsupported Windows architecture: $architecture"
+      exit 1
+    }
+  }
+
+  $installerUrl = "https://github.com/conda-forge/miniforge/releases/latest/download/$installerName"
+  $installerPath = Join-Path $env:TEMP $installerName
+
+  Write-Host "Miniforge를 찾지 못했습니다. 자동 설치를 시작합니다."
+  Write-Host "Downloading: $installerUrl"
+  Invoke-WebRequest -Uri $installerUrl -OutFile $installerPath
+
+  $arguments = @(
+    "/InstallationType=JustMe",
+    "/RegisterPython=0",
+    "/AddToPath=0",
+    "/S",
+    "/D=$DestinationRoot"
+  )
+  $process = Start-Process -FilePath $installerPath -ArgumentList $arguments -Wait -PassThru
+  Remove-Item $installerPath -ErrorAction SilentlyContinue
+  if ($process.ExitCode -ne 0) {
+    Write-Error "Miniforge installation failed with exit code $($process.ExitCode)."
+    exit $process.ExitCode
+  }
+}
 
 if (-not (Get-Command conda.exe -ErrorAction SilentlyContinue)) {
-  $candidate = Join-Path $env:USERPROFILE "miniforge3\Scripts\conda.exe"
+  $candidate = Join-Path $installRoot "Scripts\conda.exe"
   if (Test-Path $candidate) {
     $condaCmd = $candidate
   } else {
-    Write-Error "Could not find conda. Install Miniforge first: https://conda-forge.org/download/"
-    exit 1
+    Install-Miniforge -DestinationRoot $installRoot
+    $condaCmd = Join-Path $installRoot "Scripts\conda.exe"
+    if (-not (Test-Path $condaCmd)) {
+      Write-Error "Miniforge 설치 후 conda를 찾지 못했습니다."
+      exit 1
+    }
   }
 } else {
   $condaCmd = (Get-Command conda.exe).Source
