@@ -212,6 +212,36 @@ def split_connected_components(mask: np.ndarray) -> list[np.ndarray]:
     return components
 
 
+def combine_instance_masks(mask_dir: Path, shape: tuple[int, int]) -> np.ndarray:
+    combined = np.zeros(shape, dtype=bool)
+    if not mask_dir.exists():
+        return combined
+    for mask_path in sorted(mask_dir.iterdir()):
+        if not mask_path.is_file():
+            continue
+        mask_data = iio.imread(mask_path)
+        if getattr(mask_data, "ndim", 2) == 3:
+            mask_data = mask_data[..., 0]
+        if mask_data.shape[:2] == shape:
+            combined |= mask_data > 0
+    return combined
+
+
+def save_instance_masks(mask: np.ndarray, mask_dir: Path, prefix: str) -> None:
+    mask_dir.mkdir(parents=True, exist_ok=True)
+    for existing_mask in mask_dir.glob("*.png"):
+        existing_mask.unlink()
+    for index, component in enumerate(split_connected_components(mask), start=1):
+        mask_path = mask_dir / f"{prefix}_{index:04d}.png"
+        iio.imwrite(mask_path, mask_to_uint8(component))
+
+
+def save_mask_outputs(mask: np.ndarray, combined_mask_path: Path, instance_mask_dir: Path, prefix: str) -> None:
+    combined_mask_path.parent.mkdir(parents=True, exist_ok=True)
+    iio.imwrite(combined_mask_path, mask_to_uint8(mask))
+    save_instance_masks(mask, instance_mask_dir, prefix)
+
+
 def decode_mask_data_url(mask_data_url: str) -> np.ndarray:
     if "," not in mask_data_url:
         raise ValueError("Invalid mask payload.")
@@ -252,7 +282,9 @@ def list_sample_dirs(base_dir: Path) -> list[Path]:
     for path in sorted(base_dir.iterdir(), reverse=True):
         if not path.is_dir():
             continue
-        if (path / "Image").is_dir() and (path / "mask").is_dir():
+        has_legacy_layout = (path / "Image").is_dir() and (path / "mask").is_dir()
+        has_dsb_layout = (path / "images").is_dir() and (path / "masks").is_dir()
+        if has_legacy_layout or has_dsb_layout:
             sample_dirs.append(path)
     return sample_dirs
 
@@ -265,7 +297,7 @@ def first_file_in_dir(path: Path) -> Path | None:
 
 
 def sample_record(sample_dir: Path) -> dict:
-    image_path = first_file_in_dir(sample_dir / "Image")
+    image_path = first_file_in_dir(sample_dir / "Image") or first_file_in_dir(sample_dir / "images")
     mask_path = first_file_in_dir(sample_dir / "mask")
     if image_path is None:
         raise ValueError(f"Sample at {sample_dir} does not contain an image.")
@@ -275,6 +307,7 @@ def sample_record(sample_dir: Path) -> dict:
         "sample_dir": sample_dir,
         "image_path": image_path,
         "mask_path": mask_path or (sample_dir / "mask" / f"{sample_dir.name}.png"),
+        "instance_mask_dir": sample_dir / "masks",
     }
 
 
@@ -289,7 +322,7 @@ def load_sample_payload(sample_dir: Path) -> dict:
             mask_data = mask_data[..., 0]
         mask = mask_data > 0
     else:
-        mask = np.zeros((height, width), dtype=bool)
+        mask = combine_instance_masks(record["instance_mask_dir"], (height, width))
     return {
         "sample_id": record["sample_id"],
         "folder_name": record["folder_name"],
@@ -446,11 +479,18 @@ class SamWebHandler(BaseHTTPRequestHandler):
         sample_dir = UPLOAD_DIR / folder_name
         image_dir = sample_dir / "Image"
         mask_dir = sample_dir / "mask"
+        dsb_image_dir = sample_dir / "images"
+        instance_mask_dir = sample_dir / "masks"
         image_dir.mkdir(parents=True, exist_ok=True)
         mask_dir.mkdir(parents=True, exist_ok=True)
+        dsb_image_dir.mkdir(parents=True, exist_ok=True)
+        instance_mask_dir.mkdir(parents=True, exist_ok=True)
         image_save_path = image_dir / f"{folder_name}{suffix}"
+        dsb_image_save_path = dsb_image_dir / f"{folder_name}{suffix}"
         mask_save_path = mask_dir / f"{folder_name}.png"
-        image_save_path.write_bytes(self.rfile.read(length))
+        image_bytes = self.rfile.read(length)
+        image_save_path.write_bytes(image_bytes)
+        dsb_image_save_path.write_bytes(image_bytes)
 
         image = read_image(image_save_path)
         view_data_url = image_to_png_data_url(image)
@@ -463,6 +503,7 @@ class SamWebHandler(BaseHTTPRequestHandler):
             "sample_dir": sample_dir,
             "image_save_path": image_save_path,
             "mask_save_path": mask_save_path,
+            "instance_mask_dir": instance_mask_dir,
             "folder_name": folder_name,
         }
 
@@ -533,7 +574,12 @@ class SamWebHandler(BaseHTTPRequestHandler):
         if last_mask is None:
             raise ValueError("No segmentation results available. Segment at least one object first.")
 
-        iio.imwrite(image_state["mask_save_path"], mask_to_uint8(last_mask))
+        save_mask_outputs(
+            last_mask,
+            image_state["mask_save_path"],
+            image_state["instance_mask_dir"],
+            image_state["folder_name"],
+        )
 
         segments = []
         components = split_connected_components(last_mask)
@@ -603,8 +649,7 @@ class SamWebHandler(BaseHTTPRequestHandler):
 
         record = sample_record(sample_dir)
         mask = decode_mask_data_url(mask_data_url)
-        record["mask_path"].parent.mkdir(parents=True, exist_ok=True)
-        iio.imwrite(record["mask_path"], mask_to_uint8(mask))
+        save_mask_outputs(mask, record["mask_path"], record["instance_mask_dir"], record["folder_name"])
 
         destination = APPROVED_DIR / sample_dir.name
         if destination.exists():

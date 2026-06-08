@@ -7,6 +7,7 @@ import numpy as np
 
 from web_app import (
     calculate_mask_metrics,
+    combine_instance_masks,
     ensure_rgb,
     list_sample_dirs,
     load_sample_payload,
@@ -15,6 +16,7 @@ from web_app import (
     normalize_points,
     normalize_patch_rect,
     outline_mask,
+    save_instance_masks,
     split_connected_components,
 )
 
@@ -106,6 +108,34 @@ class WebAppTests(unittest.TestCase):
         self.assertEqual(int(np.count_nonzero(components[0])), 4)
         self.assertEqual(int(np.count_nonzero(components[1])), 4)
 
+    def test_save_instance_masks_writes_one_file_per_component(self):
+        with TemporaryDirectory() as temp_dir:
+            mask_dir = Path(temp_dir) / "masks"
+            mask = np.zeros((6, 6), dtype=np.uint8)
+            mask[1:3, 1:3] = 1
+            mask[4:6, 4:6] = 1
+
+            save_instance_masks(mask, mask_dir, "sample_a")
+
+            mask_files = sorted(mask_dir.glob("*.png"))
+            self.assertEqual([path.name for path in mask_files], ["sample_a_0001.png", "sample_a_0002.png"])
+            self.assertEqual(sum(int(np.count_nonzero(iio.imread(path))) for path in mask_files), 8)
+
+    def test_combine_instance_masks_merges_dsb_style_masks(self):
+        with TemporaryDirectory() as temp_dir:
+            mask_dir = Path(temp_dir) / "masks"
+            mask_dir.mkdir()
+            first = np.zeros((4, 5), dtype=np.uint8)
+            second = np.zeros((4, 5), dtype=np.uint8)
+            first[0:2, 0:2] = 255
+            second[2:4, 3:5] = 255
+            iio.imwrite(mask_dir / "sample_a_0001.png", first)
+            iio.imwrite(mask_dir / "sample_a_0002.png", second)
+
+            combined = combine_instance_masks(mask_dir, (4, 5))
+
+            self.assertEqual(int(np.count_nonzero(combined)), 8)
+
     def test_list_sample_dirs_only_returns_expected_sample_folders(self):
         with TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
@@ -113,6 +143,17 @@ class WebAppTests(unittest.TestCase):
             (valid / "Image").mkdir(parents=True)
             (valid / "mask").mkdir()
             (root / "other").mkdir()
+
+            sample_dirs = list_sample_dirs(root)
+
+            self.assertEqual(sample_dirs, [valid])
+
+    def test_list_sample_dirs_accepts_dsb_style_sample_folders(self):
+        with TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            valid = root / "sample_a"
+            (valid / "images").mkdir(parents=True)
+            (valid / "masks").mkdir()
 
             sample_dirs = list_sample_dirs(root)
 
@@ -140,6 +181,27 @@ class WebAppTests(unittest.TestCase):
             self.assertEqual(payload["width"], 5)
             self.assertEqual(payload["height"], 4)
             self.assertTrue(payload["image_data_url"].startswith("data:image/png;base64,"))
+            self.assertTrue(payload["mask_data_url"].startswith("data:image/png;base64,"))
+
+    def test_load_sample_payload_combines_dsb_style_instance_masks(self):
+        with TemporaryDirectory() as temp_dir:
+            sample_dir = Path(temp_dir) / "sample_a"
+            image_dir = sample_dir / "images"
+            mask_dir = sample_dir / "masks"
+            image_dir.mkdir(parents=True)
+            mask_dir.mkdir()
+
+            image = np.zeros((4, 5, 3), dtype=np.uint8)
+            iio.imwrite(image_dir / "sample_a.png", image)
+            mask = np.zeros((4, 5), dtype=np.uint8)
+            mask[1:3, 2:4] = 255
+            iio.imwrite(mask_dir / "sample_a_0001.png", mask)
+
+            payload = load_sample_payload(sample_dir)
+
+            self.assertEqual(payload["sample_id"], "sample_a")
+            self.assertEqual(payload["width"], 5)
+            self.assertEqual(payload["height"], 4)
             self.assertTrue(payload["mask_data_url"].startswith("data:image/png;base64,"))
 
 
