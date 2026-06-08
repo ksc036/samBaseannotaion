@@ -6,4 +6,5 @@ dependencies:
   - micro_sam
   - imageio
   - numpy
+  - opencv
   - scipy

@@ -19,3 +19,6 @@ last_upload.json
 Thumbs.db
 .vscode/
 .idea/
+
+annotation_complete/
+deleted_annotations/

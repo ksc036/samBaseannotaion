@@ -1,0 +1,12 @@
+.git
+.DS_Store
+__pycache__/
+*.pyc
+.pytest_cache/
+.superpowers/
+logs/
+model_cache/
+web_uploads/
+web_outputs/
+annotation_complete/
+deleted_annotations/

@@ -1,0 +1,20 @@
+services:
+  sambaseannotation:
+    build:
+      context: .
+    container_name: sambaseannotation
+    restart: unless-stopped
+    ports:
+      - "${APP_PORT:-8765}:8765"
+    environment:
+      APP_HOST: "0.0.0.0"
+      APP_PORT: "8765"
+      XDG_CACHE_HOME: "/app/model_cache"
+      TORCH_HOME: "/app/model_cache/torch"
+      MPLCONFIGDIR: "/app/model_cache/matplotlib"
+    volumes:
+      - ./web_uploads:/app/web_uploads
+      - ./annotation_complete:/app/annotation_complete
+      - ./deleted_annotations:/app/deleted_annotations
+      - ./logs:/app/logs
+      - ./model_cache:/app/model_cache
