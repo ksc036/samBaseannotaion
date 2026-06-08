@@ -7,6 +7,7 @@ data/
 embeddings/
 web_uploads/
 web_outputs/
+model_cache/
 last_upload.json
 
 # Installer/log files created during local setup

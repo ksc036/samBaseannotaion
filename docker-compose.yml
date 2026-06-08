@@ -1,5 +1,6 @@
 services:
   sambaseannotation:
+    platform: linux/amd64
     build:
       context: .
     container_name: sambaseannotation
@@ -12,6 +13,8 @@ services:
       XDG_CACHE_HOME: "/app/model_cache"
       TORCH_HOME: "/app/model_cache/torch"
       MPLCONFIGDIR: "/app/model_cache/matplotlib"
+      KMP_AFFINITY: "disabled"
+      OMP_NUM_THREADS: "1"
     volumes:
       - ./web_uploads:/app/web_uploads
       - ./annotation_complete:/app/annotation_complete
