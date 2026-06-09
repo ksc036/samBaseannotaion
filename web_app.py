@@ -282,9 +282,9 @@ def list_sample_dirs(base_dir: Path) -> list[Path]:
     for path in sorted(base_dir.iterdir(), reverse=True):
         if not path.is_dir():
             continue
-        has_legacy_layout = (path / "Image").is_dir() and (path / "mask").is_dir()
-        has_dsb_layout = (path / "images").is_dir() and (path / "masks").is_dir()
-        if has_legacy_layout or has_dsb_layout:
+        has_image = (path / "Image").is_dir()
+        has_mask_outputs = (path / "mask").is_dir() or (path / "masks").is_dir()
+        if has_image and has_mask_outputs:
             sample_dirs.append(path)
     return sample_dirs
 
@@ -297,7 +297,7 @@ def first_file_in_dir(path: Path) -> Path | None:
 
 
 def sample_record(sample_dir: Path) -> dict:
-    image_path = first_file_in_dir(sample_dir / "Image") or first_file_in_dir(sample_dir / "images")
+    image_path = first_file_in_dir(sample_dir / "Image")
     mask_path = first_file_in_dir(sample_dir / "mask")
     if image_path is None:
         raise ValueError(f"Sample at {sample_dir} does not contain an image.")
@@ -479,18 +479,14 @@ class SamWebHandler(BaseHTTPRequestHandler):
         sample_dir = UPLOAD_DIR / folder_name
         image_dir = sample_dir / "Image"
         mask_dir = sample_dir / "mask"
-        dsb_image_dir = sample_dir / "images"
         instance_mask_dir = sample_dir / "masks"
         image_dir.mkdir(parents=True, exist_ok=True)
         mask_dir.mkdir(parents=True, exist_ok=True)
-        dsb_image_dir.mkdir(parents=True, exist_ok=True)
         instance_mask_dir.mkdir(parents=True, exist_ok=True)
         image_save_path = image_dir / f"{folder_name}{suffix}"
-        dsb_image_save_path = dsb_image_dir / f"{folder_name}{suffix}"
         mask_save_path = mask_dir / f"{folder_name}.png"
         image_bytes = self.rfile.read(length)
         image_save_path.write_bytes(image_bytes)
-        dsb_image_save_path.write_bytes(image_bytes)
 
         image = read_image(image_save_path)
         view_data_url = image_to_png_data_url(image)

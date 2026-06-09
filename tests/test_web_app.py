@@ -148,11 +148,11 @@ class WebAppTests(unittest.TestCase):
 
             self.assertEqual(sample_dirs, [valid])
 
-    def test_list_sample_dirs_accepts_dsb_style_sample_folders(self):
+    def test_list_sample_dirs_accepts_image_with_instance_masks(self):
         with TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
             valid = root / "sample_a"
-            (valid / "images").mkdir(parents=True)
+            (valid / "Image").mkdir(parents=True)
             (valid / "masks").mkdir()
 
             sample_dirs = list_sample_dirs(root)
@@ -183,10 +183,10 @@ class WebAppTests(unittest.TestCase):
             self.assertTrue(payload["image_data_url"].startswith("data:image/png;base64,"))
             self.assertTrue(payload["mask_data_url"].startswith("data:image/png;base64,"))
 
-    def test_load_sample_payload_combines_dsb_style_instance_masks(self):
+    def test_load_sample_payload_combines_instance_masks_with_image_folder(self):
         with TemporaryDirectory() as temp_dir:
             sample_dir = Path(temp_dir) / "sample_a"
-            image_dir = sample_dir / "images"
+            image_dir = sample_dir / "Image"
             mask_dir = sample_dir / "masks"
             image_dir.mkdir(parents=True)
             mask_dir.mkdir()
