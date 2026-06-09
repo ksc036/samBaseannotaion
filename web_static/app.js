@@ -31,6 +31,7 @@ const overlayOpacityValue = document.getElementById("overlayOpacityValue");
 const resultsBody = document.getElementById("resultsBody");
 const resultsPanel = document.getElementById("resultsPanel");
 const exportResultsBtn = document.getElementById("exportResultsBtn");
+const deleteSelectedResultsBtn = document.getElementById("deleteSelectedResultsBtn");
 const stageWrap = document.getElementById("stageWrap");
 const avgFeretHeader = document.getElementById("avgFeretHeader");
 const areaHeader = document.getElementById("areaHeader");
@@ -412,7 +413,7 @@ function renderResults(rows = []) {
     cell.textContent = "No calculation yet.";
     row.append(cell);
     resultsBody.append(row);
-    exportResultsBtn.disabled = true;
+    updateResultActionButtons(rows);
     return;
   }
 
@@ -464,7 +465,7 @@ function renderResults(rows = []) {
     row.append(selectCell, colorCell, segmentCell, avgFeretCell, areaCell, feretMaxCell, feretMinCell, eqCell, bboxWidthCell, bboxHeightCell);
     resultsBody.append(row);
   });
-  exportResultsBtn.disabled = rows.length === 0;
+  updateResultActionButtons(rows);
 }
 
 function renderLoadingResults() {
@@ -477,6 +478,14 @@ function renderLoadingResults() {
   row.append(cell);
   resultsBody.append(row);
   exportResultsBtn.disabled = true;
+  deleteSelectedResultsBtn.disabled = true;
+}
+
+function updateResultActionButtons(rows = measurements) {
+  const hasRows = rows.length > 0;
+  const hasSelectedRows = rows.some((segment) => selectedMeasurementIds.has(segment.segment_id));
+  exportResultsBtn.disabled = !hasRows || !hasSelectedRows;
+  deleteSelectedResultsBtn.disabled = !hasRows || !hasSelectedRows;
 }
 
 function updateOpacityLabels() {
@@ -795,6 +804,100 @@ function exportSelectedMeasurements() {
   setStatus(`Exported ${selectedRows.length} selected measurement row(s) to XLSX.`);
 }
 
+async function deleteSelectedMeasurements() {
+  const selectedRows = measurements.filter((segment) => selectedMeasurementIds.has(segment.segment_id));
+  if (selectedRows.length === 0) {
+    setStatus("Select at least one measurement row to delete.");
+    return;
+  }
+  if (!imageBitmap || !globalWorkspace) {
+    setStatus("Open an image first.");
+    return;
+  }
+  const confirmed = window.confirm(`Delete ${selectedRows.length} selected segment(s) from the current mask?`);
+  if (!confirmed) {
+    setStatus("Segment deletion cancelled.");
+    return;
+  }
+
+  const { canvasCtx } = buildCombinedMaskCanvas();
+  const maskImageData = canvasCtx.getImageData(0, 0, naturalWidth, naturalHeight);
+  const maskValues = new Uint8Array(naturalWidth * naturalHeight);
+  for (let index = 0; index < maskValues.length; index += 1) {
+    maskValues[index] = maskImageData.data[index * 4] > 0 ? 1 : 0;
+  }
+
+  const components = splitConnectedComponents(maskValues, naturalWidth, naturalHeight);
+  const selectedIndexes = new Set();
+  measurements.forEach((segment, index) => {
+    if (selectedMeasurementIds.has(segment.segment_id)) {
+      selectedIndexes.add(index);
+    }
+  });
+
+  const pixelsToDelete = new Uint8Array(naturalWidth * naturalHeight);
+  let deletedPixelCount = 0;
+  selectedIndexes.forEach((componentIndex) => {
+    const component = components[componentIndex];
+    if (!component) return;
+    component.forEach((pixelIndex) => {
+      if (pixelsToDelete[pixelIndex]) return;
+      pixelsToDelete[pixelIndex] = 1;
+      deletedPixelCount += 1;
+    });
+  });
+
+  if (deletedPixelCount === 0) {
+    setStatus("Could not find selected segment pixels to delete. Run Calculate again.");
+    return;
+  }
+
+  const refreshPromises = [];
+  getCurrentWorkspaces().forEach((workspace) => {
+    const imageData = workspace.maskCtx.getImageData(0, 0, workspace.rect.width, workspace.rect.height);
+    let changed = false;
+
+    for (let y = 0; y < workspace.rect.height; y += 1) {
+      for (let x = 0; x < workspace.rect.width; x += 1) {
+        const globalX = workspace.rect.x + x;
+        const globalY = workspace.rect.y + y;
+        const globalIndex = globalY * naturalWidth + globalX;
+        if (!pixelsToDelete[globalIndex]) continue;
+
+        const offset = (y * workspace.rect.width + x) * 4;
+        if (imageData.data[offset] === 0 && imageData.data[offset + 1] === 0 && imageData.data[offset + 2] === 0) {
+          continue;
+        }
+        imageData.data[offset] = 0;
+        imageData.data[offset + 1] = 0;
+        imageData.data[offset + 2] = 0;
+        imageData.data[offset + 3] = 255;
+        changed = true;
+      }
+    }
+
+    if (!changed) return;
+    pushWorkspaceHistory(workspace, captureWorkspaceSnapshot(workspace, { includeMask: true }));
+    workspace.maskCtx.putImageData(imageData, 0, 0);
+    refreshPromises.push(refreshWorkspaceOverlay(workspace));
+  });
+
+  await Promise.all(refreshPromises);
+  measurements = measurements.filter((segment) => !selectedMeasurementIds.has(segment.segment_id));
+  selectedMeasurementIds = new Set();
+
+  if (measurements.length > 0) {
+    const updatedMask = buildCombinedMaskCanvas().canvasCtx.getImageData(0, 0, naturalWidth, naturalHeight);
+    combinedOverlayBitmap = await buildComponentOverlayFromMask(updatedMask, measurements);
+  } else {
+    combinedOverlayBitmap = null;
+  }
+
+  renderResults(measurements);
+  draw();
+  setStatus(`Deleted ${selectedRows.length} selected segment(s). Run Calculate to save updated measurements.`);
+}
+
 function clearWorkspaceMask(workspace) {
   workspace.maskCtx.clearRect(0, 0, workspace.rect.width, workspace.rect.height);
   workspace.maskCtx.fillStyle = "#000000";
@@ -1098,10 +1201,15 @@ resultsBody.addEventListener("change", (event) => {
   } else {
     selectedMeasurementIds.delete(segmentId);
   }
+  updateResultActionButtons(measurements);
 });
 
 exportResultsBtn.addEventListener("click", () => {
   exportSelectedMeasurements();
+});
+
+deleteSelectedResultsBtn.addEventListener("click", async () => {
+  await deleteSelectedMeasurements();
 });
 
 pointList.addEventListener("mouseover", (event) => {
@@ -1437,6 +1545,7 @@ stageWrap.addEventListener("drop", async (event) => {
 updateOpacityLabels();
 brushSizeValue.textContent = `${brushSize.value} px`;
 exportResultsBtn.disabled = true;
+deleteSelectedResultsBtn.disabled = true;
 renderPatchList();
 renderPointList();
 renderResults();

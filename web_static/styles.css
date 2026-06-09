@@ -319,9 +319,25 @@ button:not(.active).editTool {
   margin: 0 0 8px;
 }
 
-#exportResultsBtn {
+.resultsActions {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: 1fr;
   margin-bottom: 8px;
+}
+
+#exportResultsBtn,
+#deleteSelectedResultsBtn {
   width: 100%;
+}
+
+.dangerButton {
+  background: #a53535;
+  color: #ffffff;
+}
+
+.dangerButton:hover:not(:disabled) {
+  background: #8e2e2e;
 }
 
 .resultSelectCell {
