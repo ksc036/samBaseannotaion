@@ -255,15 +255,32 @@ def decode_mask_data_url(mask_data_url: str) -> np.ndarray:
 
 def image_to_png_data_url(image: np.ndarray) -> str:
     buffer = BytesIO()
-    if image.ndim == 2:
-        data = image.astype(np.float32)
-        data = data - data.min()
-        if data.max() > 0:
-            data = data / data.max()
-        data = (data * 255).astype(np.uint8)
+    data = np.asarray(image)
+
+    if data.ndim not in (2, 3):
+        raise ValueError(f"Only 2D grayscale or RGB/RGBA images can be converted to PNG. Got shape {data.shape}.")
+
+    if data.ndim == 3 and data.shape[-1] not in (3, 4):
+        raise ValueError(f"Only RGB/RGBA channel images can be converted to PNG. Got shape {data.shape}.")
+
+    if data.dtype == np.uint8:
+        png_data = data
     else:
-        data = image
-    iio.imwrite(buffer, data, extension=".png")
+        float_data = data.astype(np.float32)
+        finite_mask = np.isfinite(float_data)
+        if not np.any(finite_mask):
+            png_data = np.zeros(float_data.shape, dtype=np.uint8)
+        else:
+            min_value = float(np.min(float_data[finite_mask]))
+            max_value = float(np.max(float_data[finite_mask]))
+            float_data = np.where(finite_mask, float_data, min_value)
+            if max_value > min_value:
+                float_data = (float_data - min_value) / (max_value - min_value)
+            else:
+                float_data = np.zeros_like(float_data, dtype=np.float32)
+            png_data = (float_data * 255).clip(0, 255).astype(np.uint8)
+
+    iio.imwrite(buffer, png_data, extension=".png")
     encoded = base64.b64encode(buffer.getvalue()).decode("ascii")
     return f"data:image/png;base64,{encoded}"
 
