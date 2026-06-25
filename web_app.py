@@ -255,30 +255,7 @@ def decode_mask_data_url(mask_data_url: str) -> np.ndarray:
 
 def image_to_png_data_url(image: np.ndarray) -> str:
     buffer = BytesIO()
-    data = np.asarray(image)
-
-    if data.ndim not in (2, 3):
-        raise ValueError(f"Only 2D grayscale or RGB/RGBA images can be converted to PNG. Got shape {data.shape}.")
-
-    if data.ndim == 3 and data.shape[-1] not in (3, 4):
-        raise ValueError(f"Only RGB/RGBA channel images can be converted to PNG. Got shape {data.shape}.")
-
-    if data.dtype == np.uint8:
-        png_data = data
-    else:
-        float_data = data.astype(np.float32)
-        finite_mask = np.isfinite(float_data)
-        if not np.any(finite_mask):
-            png_data = np.zeros(float_data.shape, dtype=np.uint8)
-        else:
-            min_value = float(np.min(float_data[finite_mask]))
-            max_value = float(np.max(float_data[finite_mask]))
-            float_data = np.where(finite_mask, float_data, min_value)
-            if max_value > min_value:
-                float_data = (float_data - min_value) / (max_value - min_value)
-            else:
-                float_data = np.zeros_like(float_data, dtype=np.float32)
-            png_data = (float_data * 255).clip(0, 255).astype(np.uint8)
+    png_data = normalize_to_uint8(select_image_plane(image))
 
     iio.imwrite(buffer, png_data, extension=".png")
     encoded = base64.b64encode(buffer.getvalue()).decode("ascii")
@@ -383,14 +360,48 @@ def normalize_patch_rect(patch: dict | None, image_shape: tuple[int, ...]) -> di
     }
 
 
+def select_image_plane(image: np.ndarray) -> np.ndarray:
+    data = np.asarray(image)
+    if data.ndim == 2:
+        return data
+    if data.ndim == 3 and data.shape[-1] in (3, 4):
+        return data
+    if data.ndim == 3:
+        return data[0]
+    if data.ndim == 4 and data.shape[-1] in (3, 4):
+        return data[0]
+    raise ValueError(f"Only 2D grayscale, RGB/RGBA, or TIFF stack images are supported. Got shape {data.shape}.")
+
+
+def normalize_to_uint8(image: np.ndarray) -> np.ndarray:
+    data = np.asarray(image)
+    if data.dtype == np.uint8:
+        return data
+
+    float_data = data.astype(np.float32)
+    finite_mask = np.isfinite(float_data)
+    if not np.any(finite_mask):
+        return np.zeros(float_data.shape, dtype=np.uint8)
+
+    min_value = float(np.min(float_data[finite_mask]))
+    max_value = float(np.max(float_data[finite_mask]))
+    float_data = np.where(finite_mask, float_data, min_value)
+    if max_value > min_value:
+        float_data = (float_data - min_value) / (max_value - min_value)
+    else:
+        float_data = np.zeros_like(float_data, dtype=np.float32)
+    return (float_data * 255).clip(0, 255).astype(np.uint8)
+
+
 def ensure_rgb(image: np.ndarray) -> np.ndarray:
-    if image.ndim == 2:
-        return np.repeat(image[..., None], 3, axis=-1)
-    if image.ndim == 3 and image.shape[-1] == 4:
-        return image[..., :3]
-    if image.ndim == 3 and image.shape[-1] == 3:
-        return image
-    raise ValueError(f"Only 2D grayscale or RGB/RGBA images are supported. Got shape {image.shape}.")
+    data = normalize_to_uint8(select_image_plane(image))
+    if data.ndim == 2:
+        return np.repeat(data[..., None], 3, axis=-1)
+    if data.ndim == 3 and data.shape[-1] == 4:
+        return data[..., :3]
+    if data.ndim == 3 and data.shape[-1] == 3:
+        return data
+    raise ValueError(f"Only 2D grayscale or RGB/RGBA images are supported. Got shape {np.asarray(image).shape}.")
 
 
 def read_image(path: Path) -> np.ndarray:

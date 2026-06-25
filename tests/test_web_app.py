@@ -16,6 +16,7 @@ from web_app import (
     normalize_points,
     normalize_patch_rect,
     outline_mask,
+    read_image,
     save_instance_masks,
     split_connected_components,
 )
@@ -74,6 +75,64 @@ class WebAppTests(unittest.TestCase):
         np.testing.assert_array_equal(rgb[..., 0], image)
         np.testing.assert_array_equal(rgb[..., 1], image)
         np.testing.assert_array_equal(rgb[..., 2], image)
+
+    def test_ensure_rgb_normalizes_16_bit_grayscale_to_8_bit_rgb(self):
+        image = np.array([[1000, 2000], [3000, 5000]], dtype=np.uint16)
+
+        rgb = ensure_rgb(image)
+
+        self.assertEqual(rgb.dtype, np.uint8)
+        self.assertEqual(rgb.shape, (2, 2, 3))
+        np.testing.assert_array_equal(rgb[..., 0], np.array([[0, 63], [127, 255]], dtype=np.uint8))
+        np.testing.assert_array_equal(rgb[..., 0], rgb[..., 1])
+        np.testing.assert_array_equal(rgb[..., 1], rgb[..., 2])
+
+    def test_ensure_rgb_uses_first_plane_from_grayscale_tiff_stack(self):
+        stack = np.stack(
+            [
+                np.array([[0, 10], [20, 30]], dtype=np.uint16),
+                np.array([[100, 200], [300, 400]], dtype=np.uint16),
+            ],
+            axis=0,
+        )
+
+        rgb = ensure_rgb(stack)
+
+        self.assertEqual(rgb.dtype, np.uint8)
+        self.assertEqual(rgb.shape, (2, 2, 3))
+        np.testing.assert_array_equal(rgb[..., 0], np.array([[0, 85], [170, 255]], dtype=np.uint8))
+
+    def test_ensure_rgb_normalizes_16_bit_rgb_to_8_bit_rgb(self):
+        image = np.array(
+            [
+                [[0, 1000, 2000], [3000, 4000, 5000]],
+                [[6000, 7000, 8000], [9000, 10000, 11000]],
+            ],
+            dtype=np.uint16,
+        )
+
+        rgb = ensure_rgb(image)
+
+        self.assertEqual(rgb.dtype, np.uint8)
+        self.assertEqual(rgb.shape, (2, 2, 3))
+        self.assertEqual(int(rgb.max()), 255)
+
+    def test_read_image_returns_8_bit_rgb_for_16_bit_tiff_stack(self):
+        with TemporaryDirectory() as temp_dir:
+            path = Path(temp_dir) / "stack.tif"
+            stack = np.stack(
+                [
+                    np.array([[1000, 2000], [3000, 5000]], dtype=np.uint16),
+                    np.array([[5000, 3000], [2000, 1000]], dtype=np.uint16),
+                ],
+                axis=0,
+            )
+            iio.imwrite(path, stack)
+
+            image = read_image(path)
+
+            self.assertEqual(image.dtype, np.uint8)
+            self.assertEqual(image.shape, (2, 2, 3))
 
     def test_mask_overlay_rgba_makes_background_transparent(self):
         mask = np.array([[0, 255]], dtype=np.uint8)
